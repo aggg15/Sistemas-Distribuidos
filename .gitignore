@@ -1,0 +1,14 @@
+# Archivos generados por Python y entornos locales.
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Configuración privada y datos de ejecución.
+.env
+.env.*
+!.env.example
+*.log
+
+# Metadatos del sistema.
+.DS_Store
