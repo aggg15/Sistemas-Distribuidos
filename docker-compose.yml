@@ -1,12 +1,37 @@
-# Kafka local para desarrollo: un único nodo en modo KRaft (sin Zookeeper).
+# Comunicaciones locales: CENTRAL, Monitor de prueba y Kafka en modo KRaft.
 #
-#   docker compose up -d       arrancar
+#   docker compose up -d kafka arrancar solo el broker
 #   docker compose logs kafka  ver qué pasa
 #   docker compose down        parar
 #
 # Para que otros PCs del laboratorio se conecten, arrancar indicando la IP
-# de este equipo:  KAFKA_HOST=192.168.1.20 docker compose up -d
+# de este equipo:  KAFKA_HOST=192.168.1.20 docker compose up -d kafka
 services:
+  central:
+    build: .
+    ports:
+      - "${WM_SOCKET_PUBLISHED_PORT:-9999}:${WM_SOCKET_PORT:-9999}"
+    environment:
+      WM_SOCKET_PORT: ${WM_SOCKET_PORT:-9999}
+      WM_SOCKET_TIMEOUT: ${WM_CENTRAL_TIMEOUT:-6}
+    stop_grace_period: 10s
+
+  # Prueba opcional del enlace TCP: docker compose --profile demo up --build central monitor
+  monitor:
+    profiles: [demo]
+    build: .
+    command: ["python", "WM_WS_M.py"]
+    depends_on: [central]
+    environment:
+      WM_CENTRAL_HOST: central
+      WM_CENTRAL_PORT: ${WM_SOCKET_PORT:-9999}
+      WM_WS_ID: ${WM_WS_ID:-WS-04}
+      WM_WS_LOCATION: ${WM_WS_LOCATION:-River Park}
+      WM_SOCKET_TIMEOUT: ${WM_MONITOR_TIMEOUT:-3}
+      WM_PING_INTERVAL: ${WM_PING_INTERVAL:-2}
+      WM_RECONNECT_DELAY: ${WM_RECONNECT_DELAY:-2}
+    stop_grace_period: 10s
+
   kafka:
     image: apache/kafka:3.9.1
     container_name: wm-kafka

@@ -11,6 +11,10 @@ Flujo de una conexión (página 12 del enunciado):
     cualquiera ── EOT ──▶                cierre ordenado
 """
 
+from contextlib import contextmanager
+import math
+import time
+
 STX = b"\x02"
 ETX = b"\x03"
 EOT = b"\x04"
@@ -56,12 +60,43 @@ class Canal:
     petición/respuesta no puede mezclarse con otro en el mismo socket.
     """
 
-    def __init__(self, conexion):
+    def __init__(self, conexion, timeout=3.0):
+        if not math.isfinite(timeout) or timeout <= 0:
+            raise ValueError("El tiempo de espera debe ser positivo y finito")
         self.conexion = conexion
+        self.timeout = timeout
+        self._limite = None
+
+    @contextmanager
+    def _operacion(self):
+        """Un plazo total evita que un emisor lento retenga el canal byte a byte."""
+        anterior = self._limite
+        timeout_anterior = self.conexion.gettimeout()
+        limite = time.monotonic() + self.timeout
+        self._limite = min(anterior, limite) if anterior is not None else limite
+        try:
+            yield
+        finally:
+            self._limite = anterior
+            try:
+                self.conexion.settimeout(timeout_anterior)
+            except OSError:
+                pass  # El propietario puede haber cerrado ya el socket.
+
+    def _preparar_io(self):
+        restante = self._limite - time.monotonic()
+        if restante <= 0:
+            raise TimeoutError("Se agotó el tiempo de la operación de protocolo")
+        self.conexion.settimeout(restante)
+
+    def _enviar(self, datos):
+        self._preparar_io()
+        self.conexion.sendall(datos)
 
     # --- Lectura y escritura de bytes sueltos -------------------------------
 
     def _leer_byte(self):
+        self._preparar_io()
         byte = self.conexion.recv(1)
         if not byte:
             # recv() devuelve b"" cuando el otro extremo cierra sin enviar EOT.
@@ -83,21 +118,24 @@ class Canal:
 
     def saludar(self):
         """Lado cliente: envía ENQ y espera ACK."""
-        self.conexion.sendall(ENQ)
-        if not self._leer_control():
-            raise ErrorProtocolo("El servidor rechazó la conexión (NACK)")
+        with self._operacion():
+            self._enviar(ENQ)
+            if not self._leer_control():
+                raise ErrorProtocolo("El servidor rechazó la conexión (NACK)")
 
     def esperar_saludo(self, aceptar=True):
         """Lado servidor: espera ENQ y responde ACK o, si no acepta, NACK."""
-        byte = self._leer_byte()
-        if byte != ENQ:
-            raise ErrorProtocolo(f"Se esperaba ENQ y llegó {byte!r}")
-        self.conexion.sendall(ACK if aceptar else NACK)
+        with self._operacion():
+            byte = self._leer_byte()
+            if byte != ENQ:
+                raise ErrorProtocolo(f"Se esperaba ENQ y llegó {byte!r}")
+            self._enviar(ACK if aceptar else NACK)
 
     def cerrar(self):
         """Envía EOT para indicar un cierre ordenado. El socket lo cierra quien lo creó."""
         try:
-            self.conexion.sendall(EOT)
+            with self._operacion():
+                self._enviar(EOT)
         except OSError:
             pass  # Si el otro extremo ya no está, no hay a quién avisar.
 
@@ -106,24 +144,29 @@ class Canal:
     def enviar_trama(self, texto):
         """Envía una trama y espera ACK; ante NACK la reenvía hasta MAX_INTENTOS veces."""
         trama = empaquetar(texto)
-        for _ in range(MAX_INTENTOS):
-            self.conexion.sendall(trama)
-            if self._leer_control():
-                return
+        with self._operacion():
+            for _ in range(MAX_INTENTOS):
+                self._enviar(trama)
+                if self._leer_control():
+                    return
         raise ErrorProtocolo(f"Trama rechazada {MAX_INTENTOS} veces")
 
     def recibir_trama(self):
-        """Recibe una trama, comprueba el LRC y responde ACK o NACK."""
-        for _ in range(MAX_INTENTOS):
-            datos, lrc = self._leer_trama()
-            if calcular_lrc(datos) == lrc:
-                self.conexion.sendall(ACK)
+        """Confirma únicamente tramas con LRC, tamaño y texto UTF-8 válidos."""
+        with self._operacion():
+            for _ in range(MAX_INTENTOS):
+                datos, lrc = self._leer_trama()
+                texto = None
                 try:
-                    return datos.decode(FORMAT)
-                except UnicodeDecodeError as error:
-                    raise ErrorProtocolo("La trama no es texto UTF-8 válido") from error
-            self.conexion.sendall(NACK)
-        raise ErrorProtocolo(f"LRC incorrecto {MAX_INTENTOS} veces")
+                    if datos and STX not in datos and calcular_lrc(datos) == lrc:
+                        texto = datos.decode(FORMAT)
+                except UnicodeDecodeError:
+                    pass
+                if texto is not None:
+                    self._enviar(ACK)
+                    return texto
+                self._enviar(NACK)
+        raise ErrorProtocolo(f"Trama inválida {MAX_INTENTOS} veces")
 
     def _leer_trama(self):
         inicio = self._leer_byte()
@@ -149,12 +192,14 @@ class Canal:
 
     def peticion(self, texto):
         """Envía una petición y devuelve la respuesta del otro extremo."""
-        self.enviar_trama(texto)
-        return self.recibir_trama()
+        with self._operacion():
+            self.enviar_trama(texto)
+            return self.recibir_trama()
 
     def responder(self, procesar):
         """Recibe una petición, la pasa a procesar() y envía lo que devuelva."""
-        peticion = self.recibir_trama()
-        respuesta = procesar(peticion)
-        self.enviar_trama(respuesta)
-        return peticion
+        with self._operacion():
+            peticion = self.recibir_trama()
+            respuesta = procesar(peticion)
+            self.enviar_trama(respuesta)
+            return peticion

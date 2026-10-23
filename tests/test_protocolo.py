@@ -2,6 +2,7 @@
 
 import socket
 import threading
+import time
 import unittest
 
 from common.protocolo import (
@@ -42,8 +43,23 @@ class PruebasCanal(unittest.TestCase):
         self.b.close()
 
     def en_paralelo(self, funcion):
-        hilo = threading.Thread(target=funcion)
+        errores = []
+
+        def ejecutar():
+            try:
+                funcion()
+            except BaseException as error:
+                errores.append(error)
+
+        def comprobar():
+            hilo.join(timeout=4)
+            self.assertFalse(hilo.is_alive(), "El hilo de prueba quedó bloqueado")
+            if errores:
+                raise errores[0]
+
+        hilo = threading.Thread(target=ejecutar)
         hilo.start()
+        self.addCleanup(comprobar)
         return hilo
 
     def test_saludo(self):
@@ -123,6 +139,62 @@ class PruebasCanal(unittest.TestCase):
         self.a.sendall(STX)
         with self.assertRaises(ErrorProtocolo):
             self.servidor.esperar_saludo()
+
+    def test_texto_invalido_recibe_nack_antes_de_ser_confirmado(self):
+        # El checksum puede ser correcto aunque el contenido no sea UTF-8.
+        errores = []
+
+        def recibir():
+            try:
+                self.servidor.recibir_trama()
+            except ErrorProtocolo as error:
+                errores.append(error)
+
+        hilo = self.en_paralelo(recibir)
+        for datos in (b"\xff", b"", b"A\x02B"):
+            self.a.sendall(STX + datos + ETX + bytes([calcular_lrc(datos)]))
+            self.assertEqual(self.a.recv(1), NACK)
+        hilo.join(timeout=1)
+        self.assertFalse(hilo.is_alive())
+        self.assertEqual(len(errores), 1)
+
+    def test_lrc_puede_ser_un_byte_de_control(self):
+        # XOR de A y B es ETX: no debe confundirse el checksum con un delimitador.
+        recibidas = []
+        hilo = self.en_paralelo(lambda: recibidas.append(self.servidor.recibir_trama()))
+        self.cliente.enviar_trama("AB")
+        hilo.join(timeout=1)
+        self.assertEqual(recibidas, ["AB"])
+
+    def test_plazo_total_incluso_si_llegan_bytes_poco_a_poco(self):
+        self.servidor = Canal(self.b, timeout=0.12)
+        terminar = threading.Event()
+
+        def emisor_lento():
+            self.a.sendall(STX)
+            while not terminar.wait(0.02):
+                self.a.sendall(b"x")
+
+        hilo = self.en_paralelo(emisor_lento)
+        inicio = time.monotonic()
+        try:
+            with self.assertRaises(TimeoutError):
+                self.servidor.recibir_trama()
+            self.assertLess(time.monotonic() - inicio, 0.8)
+        finally:
+            terminar.set()
+            hilo.join(timeout=1)
+
+    def test_timeout_esperando_ack(self):
+        self.cliente = Canal(self.a, timeout=0.05)
+        with self.assertRaises(TimeoutError):
+            self.cliente.enviar_trama("PING#WS-04")
+
+    def test_timeout_esperando_lrc(self):
+        self.servidor = Canal(self.b, timeout=0.05)
+        self.a.sendall(STX + b"CHECK" + ETX)
+        with self.assertRaises(TimeoutError):
+            self.servidor.recibir_trama()
 
 
 if __name__ == "__main__":

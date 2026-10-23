@@ -4,6 +4,18 @@ Este documento recoge las decisiones de diseño tomadas antes de implementar la
 práctica completa: estados de las estaciones, protocolo de sockets, eventos de
 Kafka, base de datos, panel de CENTRAL y argumentos de cada aplicación.
 
+## Estado de implementación (23 de octubre de 2026)
+
+Este documento describe el **objetivo completo**, no funcionalidades ya
+implementadas. La base TCP de CENTRAL y Monitor está integrada en los programas
+de la raíz; su contrato actual se describe en [COMUNICACIONES.md](COMUNICACIONES.md).
+El resto (Engine, FO, SQLite, riego y panel) sigue pendiente.
+
+El registro de comunicaciones actual solo indica si un Monitor está conectado.
+El futuro estado DISPONIBLE exigirá además confirmar que el Engine está listo.
+Al implementar el ciclo de riego se reservará la estación mientras se tramita
+la autorización, evitando dos solicitudes simultáneas para la misma estación.
+
 ## 1. Arquitectura
 
 | Comunicación | Tecnología | Uso |
@@ -73,7 +85,7 @@ Decisiones:
 - **LRC**: XOR byte a byte de REQUEST o ANSWER codificado en UTF-8, sin incluir
   `STX` ni `ETX`, tal como indica `XOR(MESSAGE)` en el enunciado.
 - **Delimitación**: se lee hasta `ETX` y después exactamente un byte de LRC. Los
-  bytes `0x02` y `0x03` nunca aparecen dentro de un texto UTF-8, y el LRC puede
+  bytes `0x02` y `0x03` se prohíben explícitamente dentro del contenido, y el LRC puede
   valer cualquier byte porque siempre se lee uno solo.
 - **Reintentos**: ante un `NACK` se reenvía la trama hasta 3 veces. Si se agotan,
   la conexión se considera rota.
@@ -91,13 +103,14 @@ El Monitor es el cliente y mantiene la conexión abierta.
 
 | Petición del Monitor | Respuesta de CENTRAL |
 | --- | --- |
-| `REGISTRO#<ws_id>#<ubicacion>` | `OK#<ws_id>` o `KO#<motivo>` |
+| `REGISTRO#<ws_id>#<ubicacion>` | `OK#<ws_id>` o `KO#<motivo>` (ID activo duplicado: `KO#ID_EN_USO`) |
 | `AVERIA#<ws_id>` | `OK` |
 | `RESUELTA#<ws_id>` | `OK` |
 | `PING#<ws_id>` (cada 2 s) | `OK` |
 
-Si CENTRAL pasa 6 s sin recibir mensajes de un Monitor, o su conexión se cierra,
-marca la estación como DESCONECTADA. El `PING` permite detectar fallos de red que
+Con los valores por defecto, si CENTRAL agota 6 s esperando un ciclo de un
+Monitor, o su conexión se cierra, marca la estación como DESCONECTADA.
+El `PING` permite detectar fallos de red que
 no cierran el socket.
 
 ### Mensajes Engine ↔ Monitor
