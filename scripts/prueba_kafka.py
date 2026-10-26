@@ -9,6 +9,7 @@ import os
 import sys
 import time
 
+from kafka.errors import KafkaError
 # Permite importar "common" al ejecutar el script desde la raíz del repositorio.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -19,12 +20,14 @@ TOPIC = "wm.prueba"
 
 def productor(servidor):
     kafka = crear_productor(servidor)
-    for numero in range(1, 6):
-        mensaje = {"tipo": "HOLA", "numero": numero}
-        enviar(kafka, TOPIC, mensaje, clave="prueba")
-        print(f"Enviado: {mensaje}")
-        time.sleep(1)
-    kafka.close()
+    try:
+        for numero in range(1, 6):
+            mensaje = {"tipo": "HOLA", "numero": numero}
+            metadata = enviar(kafka, TOPIC, mensaje, clave="prueba")
+            print(f"Enviado y confirmado (offset {metadata.offset}): {mensaje}")
+            time.sleep(1)
+    finally:
+        kafka.close(timeout=2)
 
 
 def consumidor(servidor):
@@ -44,7 +47,10 @@ def main():
     parser.add_argument("modo", choices=["productor", "consumidor"])
     parser.add_argument("servidor", help="ip:puerto del broker, por ejemplo localhost:9092")
     args = parser.parse_args()
-    productor(args.servidor) if args.modo == "productor" else consumidor(args.servidor)
+    try:
+        productor(args.servidor) if args.modo == "productor" else consumidor(args.servidor)
+    except (KafkaError, OSError, ValueError) as error:
+        parser.exit(1, f"Error de Kafka: {error}\n")
 
 
 if __name__ == "__main__":

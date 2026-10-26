@@ -10,5 +10,12 @@ venv/
 !.env.example
 *.log
 
+# Datos persistentes y ficheros auxiliares de SQLite.
+data/
+*.db
+*.db-*
+*.sqlite
+*.sqlite-*
+
 # Metadatos del sistema.
 .DS_Store

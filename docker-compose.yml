@@ -14,6 +14,9 @@ services:
     environment:
       WM_SOCKET_PORT: ${WM_SOCKET_PORT:-9999}
       WM_SOCKET_TIMEOUT: ${WM_CENTRAL_TIMEOUT:-6}
+      WM_DB_PATH: /app/data/wm.db
+    volumes:
+      - wm-datos:/app/data
     stop_grace_period: 10s
 
   # Prueba opcional del enlace TCP: docker compose --profile demo up --build central monitor
@@ -56,3 +59,6 @@ services:
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+
+volumes:
+  wm-datos:

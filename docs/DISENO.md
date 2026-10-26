@@ -9,7 +9,10 @@ Kafka, base de datos, panel de CENTRAL y argumentos de cada aplicación.
 Este documento describe el **objetivo completo**, no funcionalidades ya
 implementadas. La base TCP de CENTRAL y Monitor está integrada en los programas
 de la raíz; su contrato actual se describe en [COMUNICACIONES.md](COMUNICACIONES.md).
-El resto (Engine, FO, SQLite, riego y panel) sigue pendiente.
+SQLite ya guarda estaciones y operarios, recupera las estaciones como
+desconectadas y prepara la tabla de riegos. Su contrato está en
+[PERSISTENCIA.md](PERSISTENCIA.md). Engine, FO, el ciclo de riego y el panel
+siguen pendientes.
 
 El registro de comunicaciones actual solo indica si un Monitor está conectado.
 El futuro estado DISPONIBLE exigirá además confirmar que el Engine está listo.
@@ -180,7 +183,7 @@ CREATE TABLE estaciones (
     id TEXT PRIMARY KEY,
     ubicacion TEXT NOT NULL,
     bloqueada INTEGER NOT NULL DEFAULT 0,
-    ultima_conexion TEXT
+    ultima_conexion TEXT NOT NULL
 );
 
 CREATE TABLE riegos (
@@ -197,9 +200,15 @@ CREATE TABLE riegos (
 ```
 
 - Una estación con ID nuevo se da de alta al registrarse. Si ya existe, se
-  actualiza su ubicación.
-- Los operarios se cargan con un script inicial. Las peticiones de un operario
-  desconocido se deniegan.
+  actualiza su ubicación y fecha de conexión, conservando su bloqueo.
+- Los operarios se administran con `scripts/gestionar_bd.py`. La consulta de
+  existencia está implementada; la denegación de peticiones desconocidas se
+  conectará al implementar FO y la lógica de riego.
+- El esquema ejecutable en `common/base_datos.py` añade restricciones de claves
+  foráneas, origen, duración y volumen. La tabla del historial se crea, pero
+  todavía no se escriben riegos reales.
+- El único fichero SQLite se comparte con el script de administración. Los
+  demás módulos de la simulación no acceden directamente a la base.
 
 ## 6. Panel de CENTRAL
 

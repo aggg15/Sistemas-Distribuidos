@@ -3,6 +3,7 @@
 from concurrent.futures import Future
 from contextlib import nullcontext
 import socket
+import tempfile
 import threading
 import unittest
 from unittest.mock import patch
@@ -14,7 +15,9 @@ from common.protocolo import ACK, NACK, STX, Canal, ConexionCerrada, empaquetar
 
 class PruebasCentral(unittest.TestCase):
     def setUp(self):
-        self.central = CentralTCP(timeout=0.5)
+        temporal = tempfile.TemporaryDirectory()
+        self.addCleanup(temporal.cleanup)
+        self.central = CentralTCP(timeout=0.5, ruta_bd=f"{temporal.name}/wm.db")
 
     def conectar(self, saludo=True):
         cliente, servidor = socket.socketpair()

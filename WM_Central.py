@@ -1,4 +1,4 @@
-"""Base TCP de WM_Central: sesiones persistentes de monitores, aún sin SQLite."""
+"""WM_Central: sesiones TCP de monitores y persistencia de estaciones en SQLite."""
 
 import argparse
 from dataclasses import dataclass
@@ -6,8 +6,10 @@ import logging
 import os
 import signal
 import socket
+import sqlite3
 import threading
 
+from common.base_datos import BaseDatos, RUTA_BD
 from common.configuracion import campo_valido, entero_positivo, positivo, puerto
 from common.protocolo import Canal, ConexionCerrada, ErrorProtocolo, NACK
 
@@ -19,13 +21,21 @@ class Estacion:
     ubicacion: str
     sesion: object
     averia: bool = False
+    bloqueada: bool = False
+    ultima_conexion: str = ""
 
 
 class RegistroConexiones:
-    """Estado en memoria del transporte; conectado no significa listo para regar."""
+    """Recupera datos duraderos; sesiones y salud se vuelven a conocer en cada arranque."""
 
-    def __init__(self):
-        self._estaciones = {}
+    def __init__(self, bd):
+        self.bd = bd
+        self._estaciones = {
+            fila["id"]: Estacion(fila["ubicacion"], None,
+                                  bloqueada=bool(fila["bloqueada"]),
+                                  ultima_conexion=fila["ultima_conexion"])
+            for fila in bd.listar_estaciones()
+        }
         self._lock = threading.Lock()
 
     def registrar(self, ws_id, ubicacion, sesion):
@@ -33,8 +43,12 @@ class RegistroConexiones:
             anterior = self._estaciones.get(ws_id)
             if anterior is not None and anterior.sesion is not None:
                 return False
-            # Tras reconectar habrá que conocer de nuevo la salud del Engine.
-            self._estaciones[ws_id] = Estacion(ubicacion, sesion)
+            # El OK se enviará únicamente después de confirmar la transacción.
+            fila = self.bd.registrar_estacion(ws_id, ubicacion)
+            self._estaciones[ws_id] = Estacion(
+                ubicacion, sesion, bloqueada=bool(fila["bloqueada"]),
+                ultima_conexion=fila["ultima_conexion"],
+            )
             return True
 
     def desconectar(self, ws_id, sesion):
@@ -54,7 +68,9 @@ class RegistroConexiones:
         with self._lock:
             return {
                 ws_id: {"ubicacion": e.ubicacion, "conectada": e.sesion is not None,
-                        "averia": e.averia}
+                        "averia": e.averia, "bloqueada": e.bloqueada,
+                        "ultima_conexion": e.ultima_conexion,
+                        "estado": "CONECTADA" if e.sesion is not None else "DESCONECTADA"}
                 for ws_id, e in self._estaciones.items()
             }
 
@@ -73,7 +89,12 @@ class SesionMonitor:
             ws_id, ubicacion = campos[1:]
             if not campo_valido(ws_id) or not campo_valido(ubicacion):
                 return "KO#ID o ubicacion no validos"
-            if not self.registro.registrar(ws_id, ubicacion, self):
+            try:
+                registrado = self.registro.registrar(ws_id, ubicacion, self)
+            except sqlite3.Error:
+                LOG.exception("No se pudo guardar el registro de %s", ws_id)
+                return "KO#ERROR_BD"
+            if not registrado:
                 return "KO#ID_EN_USO"
             self.ws_id = ws_id
             LOG.info("Monitor conectado: %s | %s", ws_id, ubicacion)
@@ -98,12 +119,16 @@ class SesionMonitor:
 
 class CentralTCP:
     def __init__(self, host="0.0.0.0", puerto_escucha=9999, timeout=6.0,
-                 max_conexiones=64):
+                 max_conexiones=64, ruta_bd=RUTA_BD):
         self.host = host
         self.puerto = puerto_escucha
         self.timeout = timeout
         self.max_conexiones = max_conexiones
-        self.registro = RegistroConexiones()
+        self.bd = BaseDatos(ruta_bd)
+        self.registro = RegistroConexiones(self.bd)
+        LOG.info("SQLite: %s | %s operarios", self.bd.ruta, len(self.bd.listar_operarios()))
+        for ws_id, estado in self.registro.estado().items():
+            LOG.info("Estación recuperada: %s | %s | DESCONECTADA", ws_id, estado["ubicacion"])
         self.parada = threading.Event()
         self.lista = threading.Event()
         self._lock = threading.Lock()
@@ -192,16 +217,19 @@ def main(argv=None):
                         default=os.getenv("WM_SOCKET_TIMEOUT", "6"))
     parser.add_argument("--max-conexiones", type=entero_positivo,
                         default=os.getenv("WM_MAX_CONEXIONES", "64"))
+    parser.add_argument("--db", default=os.getenv("WM_DB_PATH", RUTA_BD),
+                        help="Ruta del fichero SQLite (por defecto data/wm.db)")
     parser.add_argument("--verbose", action="store_true")
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO,
                         format="%(asctime)s %(levelname)s %(name)s: %(message)s")
-    central = CentralTCP(args.host, args.puerto, args.timeout, args.max_conexiones)
-    for senal in (signal.SIGINT, signal.SIGTERM):
-        signal.signal(senal, lambda *_: central.detener())
     try:
+        central = CentralTCP(args.host, args.puerto, args.timeout, args.max_conexiones,
+                             args.db)
+        for senal in (signal.SIGINT, signal.SIGTERM):
+            signal.signal(senal, lambda *_: central.detener())
         central.servir()
-    except OSError as error:
+    except (OSError, sqlite3.Error, ValueError) as error:
         parser.exit(1, f"Error en la central: {error}\n")
 
 

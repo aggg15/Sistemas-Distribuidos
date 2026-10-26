@@ -1,6 +1,6 @@
 # Base de comunicaciones de Water Management
 
-Estado: enlace TCP CENTRAL–Monitor implementado. El anexo de sockets original
+Estado: enlace TCP CENTRAL–Monitor implementado, con estaciones persistentes en SQLite. El anexo de sockets original
 se conserva en `anexo-sockets/`; los programas que se amplían para la práctica
 son `WM_Central.py` y `WM_WS_M.py`, en la raíz.
 
@@ -93,6 +93,7 @@ Argumentos explícitos tienen prioridad sobre las variables de entorno.
 | CENTRAL | `--host` | `WM_SOCKET_HOST` | `0.0.0.0` |
 | CENTRAL | `--timeout` | `WM_SOCKET_TIMEOUT` | `6` s |
 | CENTRAL | `--max-conexiones` | `WM_MAX_CONEXIONES` | `64` |
+| CENTRAL | `--db` | `WM_DB_PATH` | `data/wm.db` |
 | Monitor | `host` | `WM_CENTRAL_HOST` | Obligatorio |
 | Monitor | `puerto` | `WM_CENTRAL_PORT` | Obligatorio |
 | Monitor | `ws_id` | `WM_WS_ID` | Obligatorio |
@@ -133,19 +134,21 @@ publicado. Dentro de Compose, el monitor conecta a `central` y al puerto interno
 `WM_SOCKET_PUBLISHED_PORT` permite cambiar el puerto del anfitrión sin cambiar
 el interno. El nombre de servicio `central` solo se resuelve dentro de Docker.
 
-El Dockerfile actual empaqueta la base TCP, que utiliza la biblioteca estándar.
+El Dockerfile empaqueta la base TCP, SQLite y su script de administración.
+CENTRAL monta un volumen en `/app/data`; véase [PERSISTENCIA.md](PERSISTENCIA.md).
 Kafka conserva su servicio independiente y su ejemplo:
 
 ```bash
-python3 -m pip install -r requirements.txt
+.venv/bin/python -m pip install -r requirements.txt
 docker compose up -d kafka
-python3 scripts/prueba_kafka.py consumidor localhost:9092
+.venv/bin/python scripts/prueba_kafka.py consumidor localhost:9092
 # En otra terminal:
-python3 scripts/prueba_kafka.py productor localhost:9092
+.venv/bin/python scripts/prueba_kafka.py productor localhost:9092
 ```
 
-El broker y su integración con las aplicaciones se validarán en la siguiente
-fase; que el enlace TCP funcione no verifica Kafka.
+El envío y recepción contra el broker local se han comprobado por separado.
+Las utilidades esperan la confirmación del mensaje y propagan errores; la
+integración con las aplicaciones sigue pendiente del ciclo de riego.
 
 ## 5. Railway
 
@@ -168,7 +171,8 @@ Se han consultado las guías oficiales de [TCP Proxy](https://docs.railway.com/n
   TCP y un listener anunciado con el **dominio y puerto públicos reales**;
   CENTRAL podrá usar un listener interno. No basta con copiar `localhost:9092`
   del Compose a Railway. Esa configuración se cerrará con los endpoints reales.
-- SQLite y la persistencia de Kafka requerirán volúmenes en sus servicios.
+- SQLite debe usar un volumen del servicio de CENTRAL montado en `/app/data`
+  con `WM_DB_PATH=/app/data/wm.db`. La persistencia de Kafka requiere su propio volumen.
 
 No se necesitan credenciales de Railway para desarrollar ni probar esta base.
 Para configurar el despliegue harán falta el proyecto/servicios, el dominio y
@@ -179,7 +183,7 @@ Railway, no en el repositorio ni en los ejemplos.
 ## 6. Pruebas y límites
 
 ```bash
-python3 -m unittest -v
+.venv/bin/python -m unittest -v
 docker compose --profile demo config --quiet
 ```
 
@@ -188,21 +192,14 @@ reales de CENTRAL y Monitor. Incluyen registro, latidos, duplicados, errores,
 fragmentación, checksum, UTF-8, avisos, timeout y reconexión. Capturan también
 las excepciones de los hilos para evitar falsos positivos.
 
-Verificación de esta fase (23 de octubre de 2026): **32 pruebas automatizadas
-superadas** y configuración Compose válida. Además se ejecutaron CENTRAL y
-dos Monitores como procesos separados sobre TCP local. Se verificaron los
-argumentos por entorno, latidos, rechazo de duplicados con código 1, recuperación
-tras checksum incorrecto, avisos, timeout de una trama incompleta, reconexión de
-ambos Monitores al reiniciar CENTRAL, cierres normal y abrupto y límite de
-conexiones. Los argumentos inválidos también produjeron código 2.
+La batería completa incluye **56 pruebas** con las dependencias instaladas.
+También se han construido y ejecutado los contenedores en un proyecto de prueba,
+comprobando persistencia tras recrear CENTRAL y reconexión del Monitor. Se ha
+verificado la confirmación y recepción JSON contra Kafka local. El detalle de
+estas comprobaciones está en [PERSISTENCIA.md](PERSISTENCIA.md).
 
-La construcción y ejecución de las imágenes no se pudo comprobar porque Docker
-no tenía un daemon accesible. Tampoco se desplegó en Railway ni se probó Kafka
-en esta fase. Los comandos Docker anteriores quedan preparados para su
-comprobación con Docker en marcha.
-
-El registro solo vive en memoria. No hay autenticación contra SQLite, Engine,
-comprobaciones físicas, autorización de riegos, panel ni consumo de Kafka.
-`conectada` describe el enlace con el Monitor; **no implica DISPONIBLE**. Los
-avisos AVERIA/RESUELTA están admitidos por CENTRAL, pero el monitor aún no los
-genera automáticamente porque todavía no existe Engine.
+Las estaciones y operarios se guardan en SQLite; las sesiones y averías viven en
+memoria. No hay todavía Engine, comprobaciones físicas, autorización de riegos,
+panel ni consumo de Kafka en CENTRAL. `conectada` describe el enlace con el
+Monitor; **no implica DISPONIBLE**. Los avisos AVERIA/RESUELTA están admitidos por
+CENTRAL, pero el Monitor aún no los genera automáticamente porque falta Engine.
