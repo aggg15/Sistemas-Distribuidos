@@ -175,7 +175,8 @@ class CentralTCP:
                 while not self.parada.is_set():
                     try:
                         conexion, direccion = servidor.accept()
-                    except TimeoutError:
+                    except socket.timeout:
+                        # socket.timeout y no TimeoutError: en Python 3.9 son distintos.
                         continue
                     with self._lock:
                         lleno = len(self._conexiones) >= self.max_conexiones

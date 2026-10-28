@@ -13,6 +13,7 @@ Flujo de una conexión (página 12 del enunciado):
 
 from contextlib import contextmanager
 import math
+import socket
 import time
 
 STX = b"\x02"
@@ -91,13 +92,21 @@ class Canal:
 
     def _enviar(self, datos):
         self._preparar_io()
-        self.conexion.sendall(datos)
+        try:
+            self.conexion.sendall(datos)
+        except socket.timeout as error:
+            raise TimeoutError("Se agotó el tiempo enviando datos") from error
 
     # --- Lectura y escritura de bytes sueltos -------------------------------
 
     def _leer_byte(self):
         self._preparar_io()
-        byte = self.conexion.recv(1)
+        try:
+            byte = self.conexion.recv(1)
+        except socket.timeout as error:
+            # En Python 3.9 socket.timeout no es TimeoutError (lo es desde 3.10).
+            # Se traduce para que quien use el canal capture siempre TimeoutError.
+            raise TimeoutError("Se agotó el tiempo esperando datos") from error
         if not byte:
             # recv() devuelve b"" cuando el otro extremo cierra sin enviar EOT.
             raise ConnectionError("La conexión se cerró sin EOT")

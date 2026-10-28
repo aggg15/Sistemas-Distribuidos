@@ -204,7 +204,8 @@ class PruebasMonitor(unittest.TestCase):
     def test_reconexion_espera_a_que_caduque_la_sesion_anterior(self):
         intentos = []
 
-        def sesion(conexion, ws_id, ubicacion, parada, intervalo, timeout, confirmado):
+        def sesion(conexion, ws_id, ubicacion, parada, intervalo, timeout, confirmado,
+                   salud=None):
             intentos.append(None)
             if len(intentos) == 1:
                 confirmado.set()

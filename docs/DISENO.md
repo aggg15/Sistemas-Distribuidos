@@ -14,6 +14,12 @@ desconectadas y prepara la tabla de riegos. Su contrato está en
 [PERSISTENCIA.md](PERSISTENCIA.md). Engine, FO, el ciclo de riego y el panel
 siguen pendientes.
 
+Actualización (28 de octubre de 2026): `WM_WS_E.py` implementa el Engine (ID y
+CHECK con el Monitor, órdenes de Kafka, telemetría y menú) y el Monitor vigila
+su salud con `--puerto-engine`, avisando a CENTRAL con `AVERIA` y `RESUELTA`.
+CENTRAL todavía no consume Kafka, así que el ciclo de riego completo sigue
+pendiente. El despliegue en la nube pasa a hacerse en **AWS** en lugar de Railway.
+
 El registro de comunicaciones actual solo indica si un Monitor está conectado.
 El futuro estado DISPONIBLE exigirá además confirmar que el Engine está listo.
 Al implementar el ciclo de riego se reservará la estación mientras se tramita
@@ -153,8 +159,17 @@ Ejemplos:
 ```
 
 Tipos de orden: `INICIAR_RIEGO`, `PARAR`, `BLOQUEAR` y `ACTIVAR`. Tipos de
-notificación: `PASO`, `AUTORIZADO`, `DENEGADO`, `TELEMETRIA`, `RESUMEN` e
-`INTERRUMPIDO`.
+evento del Engine: `RIEGO_INICIADO`, `RIEGO_RECHAZADO`, `TELEMETRIA` y
+`RIEGO_FINALIZADO`. Tipos de notificación: `PASO`, `AUTORIZADO`, `DENEGADO`,
+`TELEMETRIA`, `RESUMEN` e `INTERRUMPIDO`.
+
+El Engine rechaza un `INICIAR_RIEGO` con motivo `FUGA`, `BLOQUEADA`, `OCUPADA`
+u `ORDEN_INVALIDA`. CENTRAL ya lo comprueba antes, pero el Engine es quien
+controla la electroválvula y no abre si no puede regar:
+
+```json
+{"tipo": "RIEGO_RECHAZADO", "ws_id": "WS-04", "riego_id": 12, "motivo": "FUGA"}
+```
 
 ### Recorrido de un riego
 
@@ -212,7 +227,7 @@ CREATE TABLE riegos (
 
 ## 6. Panel de CENTRAL
 
-CENTRAL se despliega en Railway, donde no hay una terminal interactiva. Por eso
+CENTRAL se despliega en la nube (AWS), donde no hay una terminal interactiva. Por eso
 el panel es **web**, servido por la propia CENTRAL con Flask:
 
 - La página consulta `GET /api/estado` cada segundo y muestra una tarjeta por
@@ -227,13 +242,20 @@ CENTRAL necesita dos puertos públicos: HTTP para el panel y TCP para los Monito
 
 ```text
 WM_Central <puerto_sockets> <kafka_ip:puerto> [--http 8080] [--db wm.db]
-WM_WS_M    <puerto_para_engine> <central_ip> <central_puerto> <ws_id> <ubicacion>
+WM_WS_M    <central_ip> <central_puerto> <ws_id> <ubicacion> --puerto-engine <puerto>
 WM_WS_E    <kafka_ip:puerto> <monitor_ip> <monitor_puerto>
 WM_FO      <kafka_ip:puerto> <fo_id> [--fichero peticiones.txt]
 ```
 
 El enunciado indica los argumentos mínimos. Se añade la ubicación al Monitor
-porque la estación la envía al registrarse.
+porque la estación la envía al registrarse. El puerto para el Engine es una
+opción y no el primer argumento, para no cambiar los comandos ya documentados
+del Monitor. Sin `--puerto-engine`, el Monitor no vigila ningún Engine.
+
+Con `--puerto-engine`, la salud empieza en KO: hasta que el Engine conecta y
+responde, CENTRAL ve la estación con avería. Si el Engine responde `KO`, no
+responde o se desconecta, el Monitor envía `AVERIA`; cuando vuelve a responder
+`OK`, envía `RESUELTA`.
 
 ## 8. Fichero de peticiones del operario
 
