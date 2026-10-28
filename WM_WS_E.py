@@ -83,7 +83,8 @@ class EstacionSimulada:
         if tipo == "INICIAR_RIEGO":
             self._iniciar_riego(orden)
         elif tipo == "PARAR":
-            self.finalizar(orden.get("motivo", "MANUAL"))
+            # Con riego_id solo se para ese riego: una orden atrasada no corta otro nuevo.
+            self.finalizar(orden.get("motivo", "MANUAL"), orden.get("riego_id"))
         elif tipo == "BLOQUEAR":
             with self._lock:
                 self.bloqueada = True

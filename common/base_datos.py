@@ -38,6 +38,11 @@ CREATE TABLE IF NOT EXISTS riegos (
 """
 
 
+def _ahora():
+    # Se guarda en UTC; scripts/gestionar_bd.py lo muestra en hora de Madrid.
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
 class BaseDatos:
     def __init__(self, ruta=RUTA_BD):
         if str(ruta) == ":memory:":
@@ -64,7 +69,7 @@ class BaseDatos:
     def registrar_estacion(self, ws_id, ubicacion):
         if not campo_valido(ws_id) or not campo_valido(ubicacion):
             raise ValueError("ID o ubicación de estación no válidos")
-        instante = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        instante = _ahora()
         with self._conexion() as conexion:
             # No se reemplaza la fila: se conservan bloqueo y claves del historial.
             conexion.execute(
@@ -107,8 +112,41 @@ class BaseDatos:
                 "SELECT 1 FROM operarios WHERE id=?", (fo_id,)
             ).fetchone() is not None
 
+    def guardar_bloqueo(self, ws_id, bloqueada):
+        with self._conexion() as conexion:
+            conexion.execute("UPDATE estaciones SET bloqueada=? WHERE id=?",
+                             (1 if bloqueada else 0, ws_id))
+
+    # --- Historial de riegos ------------------------------------------------
+    # Ciclo de una fila: crear_riego (al autorizar) → iniciar_riego (cuando el
+    # Engine abre la electroválvula) → cerrar_riego. Si el Engine lo rechaza o
+    # no contesta, borrar_riego: nunca llegó a regar.
+
+    def crear_riego(self, ws_id, fo_id, origen):
+        with self._conexion() as conexion:
+            cursor = conexion.execute(
+                "INSERT INTO riegos (ws_id, fo_id, origen) VALUES (?, ?, ?)",
+                (ws_id, fo_id, origen),
+            )
+            return cursor.lastrowid
+
+    def iniciar_riego(self, riego_id):
+        with self._conexion() as conexion:
+            conexion.execute("UPDATE riegos SET inicio=? WHERE id=?", (_ahora(), riego_id))
+
+    def cerrar_riego(self, riego_id, duracion_s, volumen_l, motivo):
+        with self._conexion() as conexion:
+            conexion.execute(
+                """UPDATE riegos SET fin=?, duracion_s=?, volumen_l=?, motivo_fin=?
+                   WHERE id=?""",
+                (_ahora(), duracion_s, volumen_l, motivo, riego_id),
+            )
+
+    def borrar_riego(self, riego_id):
+        with self._conexion() as conexion:
+            conexion.execute("DELETE FROM riegos WHERE id=?", (riego_id,))
+
     def listar_riegos(self):
-        # El ciclo de riego incorporará las operaciones de inicio y finalización.
         with self._conexion() as conexion:
             return [dict(fila) for fila in conexion.execute(
                 "SELECT * FROM riegos ORDER BY id"

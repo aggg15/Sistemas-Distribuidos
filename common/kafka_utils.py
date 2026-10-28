@@ -7,12 +7,11 @@ from kafka import KafkaConsumer, KafkaProducer
 from kafka.errors import KafkaTimeoutError
 from kafka.serializer import DefaultSerializer, JsonSerializer
 
-# Topics del sistema (ver docs/DISENO.md, apartado 4).
-TOPIC_PETICIONES = "wm.peticiones"
-TOPIC_ORDENES = "wm.ordenes"
-TOPIC_EVENTOS_WS = "wm.eventos_ws"
-TOPIC_NOTIFICACIONES = "wm.notificaciones"
-TOPIC_ESTADO_RED = "wm.estado_red"
+# Se reexportan para que quien ya importaba los topics desde aquí siga funcionando.
+from common.topics import (  # noqa: F401
+    TOPIC_ESTADO_RED, TOPIC_EVENTOS_WS, TOPIC_NOTIFICACIONES, TOPIC_ORDENES,
+    TOPIC_PETICIONES,
+)
 
 
 def crear_productor(servidor):

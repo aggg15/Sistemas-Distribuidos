@@ -17,8 +17,13 @@ siguen pendientes.
 Actualización (28 de octubre de 2026): `WM_WS_E.py` implementa el Engine (ID y
 CHECK con el Monitor, órdenes de Kafka, telemetría y menú) y el Monitor vigila
 su salud con `--puerto-engine`, avisando a CENTRAL con `AVERIA` y `RESUELTA`.
-CENTRAL todavía no consume Kafka, así que el ciclo de riego completo sigue
-pendiente. El despliegue en la nube pasa a hacerse en **AWS** en lugar de Railway.
+El despliegue en la nube pasa a hacerse en **AWS** en lugar de Railway.
+
+Actualización (28 de octubre de 2026, 2): CENTRAL consume Kafka y gestiona el
+ciclo de riego completo en `gestor_riegos.py` (solicitudes, autorización,
+telemetría, resumen, cortes por avería, desconexión o bloqueo, y órdenes sobre
+una estación o todas). `WM_FO.py` implementa la aplicación del operario. Siguen
+pendientes el panel web, que dará acceso a las órdenes de CENTRAL, y AWS.
 
 El registro de comunicaciones actual solo indica si un Monitor está conectado.
 El futuro estado DISPONIBLE exigirá además confirmar que el Engine está listo.
@@ -161,7 +166,24 @@ Ejemplos:
 Tipos de orden: `INICIAR_RIEGO`, `PARAR`, `BLOQUEAR` y `ACTIVAR`. Tipos de
 evento del Engine: `RIEGO_INICIADO`, `RIEGO_RECHAZADO`, `TELEMETRIA` y
 `RIEGO_FINALIZADO`. Tipos de notificación: `PASO`, `AUTORIZADO`, `DENEGADO`,
-`TELEMETRIA`, `RESUMEN` e `INTERRUMPIDO`.
+`TELEMETRIA` y `RESUMEN`. Un riego cortado por fuga, bloqueo o desconexión
+termina con un `RESUMEN` cuyo `motivo` lo indica, así que no hace falta un tipo
+`INTERRUMPIDO` aparte. Todas las notificaciones llevan el `peticion_id`, con el
+que el operario sabe a qué solicitud se refieren.
+
+Decisiones del ciclo implementado:
+
+- **Reserva**: al autorizar, la estación queda reservada y no acepta otra
+  solicitud hasta que el riego termina o se cancela.
+- **Plazo**: si el Engine no confirma `RIEGO_INICIADO` en 5 s, CENTRAL deniega
+  la solicitud y envía `PARAR` por si la válvula se abre tarde.
+- **Cortes de CENTRAL**: ante `AVERIA`, desconexión del Monitor o bloqueo,
+  CENTRAL cierra el riego sin esperar al Engine (podría estar caído) y envía
+  `PARAR`. El `RIEGO_FINALIZADO` que llegue después se ignora.
+- **Solicitudes caducadas**: las que llevan más de 30 s en Kafka (por ejemplo,
+  enviadas mientras CENTRAL estaba caída) se deniegan en lugar de regar tarde.
+- **Estado de la red**: cada 2 s CENTRAL publica en `wm.estado_red` la lista de
+  estaciones con su estado.
 
 El Engine rechaza un `INICIAR_RIEGO` con motivo `FUGA`, `BLOQUEADA`, `OCUPADA`
 u `ORDEN_INVALIDA`. CENTRAL ya lo comprueba antes, pero el Engine es quien
@@ -241,7 +263,7 @@ CENTRAL necesita dos puertos públicos: HTTP para el panel y TCP para los Monito
 ## 7. Argumentos de las aplicaciones
 
 ```text
-WM_Central <puerto_sockets> <kafka_ip:puerto> [--http 8080] [--db wm.db]
+WM_Central <puerto_sockets> <kafka_ip:puerto> [--db wm.db]
 WM_WS_M    <central_ip> <central_puerto> <ws_id> <ubicacion> --puerto-engine <puerto>
 WM_WS_E    <kafka_ip:puerto> <monitor_ip> <monitor_puerto>
 WM_FO      <kafka_ip:puerto> <fo_id> [--fichero peticiones.txt]
