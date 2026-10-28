@@ -76,6 +76,7 @@ consola: **EC2 → Lanzar instancia**.
 | SSH | 22 | 0.0.0.0/0 | Terminal desde el navegador (EC2 Instance Connect) |
 | TCP personalizado | 9999 | 0.0.0.0/0 | Sockets de los Monitores con CENTRAL |
 | TCP personalizado | 9092 | 0.0.0.0/0 | Kafka para Engines y operarios |
+| TCP personalizado | 8080 | 0.0.0.0/0 | Panel web de CENTRAL (`http://IP_AWS:8080`) |
 
 > **Seguridad**: como indica el tutorial, en producción Kafka iría en una subred
 > privada. Aquí no hay autenticación y los puertos quedan abiertos a Internet.

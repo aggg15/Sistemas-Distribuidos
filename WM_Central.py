@@ -15,6 +15,7 @@ from common.configuracion import campo_valido, entero_positivo, positivo, puerto
 from common.protocolo import Canal, ConexionCerrada, ErrorProtocolo, NACK
 from common.topics import TOPIC_EVENTOS_WS, TOPIC_PETICIONES
 from gestor_riegos import GestorRiegos
+from panel_web import RegistroEventos, crear_panel
 
 LOG = logging.getLogger("WM_Central")
 
@@ -94,6 +95,7 @@ class RegistroConexiones:
                          "ultima_conexion": e.ultima_conexion, "estado": e.estado()}
                 if datos["estado"] == "REGANDO":
                     datos["riego"] = {"riego_id": e.riego.riego_id, "fo_id": e.riego.fo_id,
+                                      "origen": e.riego.origen,
                                       "caudal_lpm": e.riego.caudal_lpm,
                                       "volumen_l": e.riego.volumen_l,
                                       "segundos": e.riego.segundos}
@@ -199,9 +201,11 @@ class SesionMonitor:
 
 class CentralTCP:
     def __init__(self, host="0.0.0.0", puerto_escucha=9999, timeout=6.0,
-                 max_conexiones=64, ruta_bd=RUTA_BD, servidor_kafka=None):
+                 max_conexiones=64, ruta_bd=RUTA_BD, servidor_kafka=None,
+                 puerto_http=None):
         self.host = host
         self.puerto = puerto_escucha
+        self.puerto_http = puerto_http
         self.timeout = timeout
         self.max_conexiones = max_conexiones
         self.servidor_kafka = servidor_kafka
@@ -308,8 +312,20 @@ class CentralTCP:
         # La espera de accept está acotada. Los sockets los cierra su hilo.
         self.parada.set()
 
+    def arrancar_panel(self):
+        """Panel web en su propio hilo. Devuelve el servidor para poder pararlo."""
+        eventos = RegistroEventos()
+        LOG.addHandler(eventos)
+        panel = crear_panel(self, eventos, puerto=self.puerto_http)
+        threading.Thread(target=panel.serve_forever, daemon=True).start()
+        LOG.info("Panel web en http://localhost:%s", panel.server_address[1])
+        return panel, eventos
+
     def servir(self):
         familia = socket.AF_INET6 if ":" in self.host else socket.AF_INET
+        panel = eventos = None
+        if self.puerto_http:
+            panel, eventos = self.arrancar_panel()
         try:
             with socket.socket(familia, socket.SOCK_STREAM) as servidor:
                 servidor.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -358,6 +374,10 @@ class CentralTCP:
                     pass
             for _, hilo in pendientes:
                 hilo.join()
+            if panel is not None:
+                panel.shutdown()
+                panel.server_close()
+                LOG.removeHandler(eventos)
             LOG.info("Central detenida")
 
 
@@ -374,6 +394,8 @@ def main(argv=None):
                         default=os.getenv("WM_MAX_CONEXIONES", "64"))
     parser.add_argument("--db", default=os.getenv("WM_DB_PATH", RUTA_BD),
                         help="Ruta del fichero SQLite (por defecto data/wm.db)")
+    parser.add_argument("--http", type=int, default=os.getenv("WM_HTTP_PORT", "8080"),
+                        help="Puerto del panel web (0 para no abrirlo)")
     parser.add_argument("--verbose", action="store_true")
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO,
@@ -381,7 +403,7 @@ def main(argv=None):
     logging.getLogger("kafka").setLevel(logging.WARNING)
     try:
         central = CentralTCP(args.host, args.puerto, args.timeout, args.max_conexiones,
-                             args.db, args.kafka)
+                             args.db, args.kafka, args.http)
         for senal in (signal.SIGINT, signal.SIGTERM):
             signal.signal(senal, lambda *_: central.detener())
         central.servir()

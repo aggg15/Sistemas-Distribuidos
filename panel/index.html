@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WM_Central · Panel de monitorización</title>
+<style>
+  :root {
+    --escritorio: #8a929b;
+    --ventana: #f4f5f7;
+    --blanco: #ffffff;
+    --texto: #1f2328;
+    --tenue: #59636e;
+    --borde: #c9ced4;
+    --cabecera-tabla: #e9ecef;
+    --titulo-a: #2b5797;
+    --titulo-b: #1e3f73;
+    --seleccion: #1f5fbf;
+    --verde: #8fd19e;
+    --verde-texto: #0f5323;
+    --verde-claro: #c6efce;
+    --rojo: #f4a6a6;
+    --rojo-texto: #8a1414;
+    --naranja: #f8c58c;
+    --naranja-texto: #7a3d00;
+    --gris: #d0d4d9;
+    --gris-texto: #3d444d;
+    --consola: #1b1f24;
+    --consola-texto: #c9d1d9;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--escritorio);
+    font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+    font-size: 13px;
+    color: var(--texto);
+  }
+  .ventana {
+    max-width: 1280px;
+    margin: 16px auto;
+    background: var(--ventana);
+    border: 1px solid #4a5560;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, .35);
+    display: flex;
+    flex-direction: column;
+    min-height: calc(100vh - 32px);
+  }
+
+  /* Barra de título */
+  .titulo {
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 10px;
+    background: linear-gradient(var(--titulo-a), var(--titulo-b));
+    color: #fff;
+  }
+  .titulo .icono { width: 16px; height: 16px; border-radius: 3px; background: #7fd3a0; }
+  .titulo h1 { margin: 0; font-size: 13px; font-weight: 600; flex: 1; }
+  .titulo .controles-ventana { display: flex; gap: 4px; }
+  .titulo .controles-ventana span {
+    width: 22px; height: 16px; border-radius: 2px; background: rgba(255, 255, 255, .25);
+  }
+  .titulo .controles-ventana span:last-child { background: #c94a3b; }
+
+  /* Barra de herramientas */
+  .herramientas {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+    padding: 6px 8px;
+    border-bottom: 1px solid var(--borde);
+    background: linear-gradient(#fbfbfc, #eceef1);
+  }
+  .herramientas button {
+    display: inline-flex; align-items: center; gap: 6px;
+    font: inherit; padding: 4px 10px;
+    background: var(--blanco); border: 1px solid var(--borde); border-radius: 3px;
+    cursor: pointer;
+  }
+  .herramientas button:hover:not(:disabled) { background: #eef4fc; border-color: #9db7da; }
+  .herramientas button:disabled { opacity: .45; cursor: default; }
+  .herramientas button i { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+  .separador { width: 1px; align-self: stretch; background: var(--borde); margin: 0 4px; }
+  .herramientas label { display: inline-flex; align-items: center; gap: 4px; color: var(--tenue); }
+  .herramientas input[type=number] { width: 64px; font: inherit; padding: 3px 4px; border: 1px solid var(--borde); }
+  #resultado { margin-left: auto; color: var(--tenue); font-size: 12px; }
+  #resultado.error { color: var(--rojo-texto); }
+
+  /* Zona principal: tabla + lateral */
+  .cuerpo {
+    display: grid; grid-template-columns: minmax(0, 1fr) 260px; gap: 12px;
+    padding: 12px; flex: 1;
+  }
+  @media (max-width: 860px) { .cuerpo { grid-template-columns: minmax(0, 1fr); } }
+  .bloque-titulo {
+    font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+    margin: 0 0 6px;
+  }
+
+  .tabla-contenedor { overflow-x: auto; background: var(--blanco); border: 1px solid var(--borde); }
+  table { width: 100%; border-collapse: collapse; min-width: 640px; }
+  th {
+    text-align: left; font-weight: 600; font-size: 12px;
+    background: var(--cabecera-tabla); border-bottom: 1px solid var(--borde);
+    padding: 5px 8px; white-space: nowrap;
+  }
+  td { padding: 4px 8px; border-bottom: 1px solid #eceef0; white-space: nowrap; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  td.id { font-family: Consolas, ui-monospace, monospace; font-weight: 700; }
+  tbody tr { cursor: pointer; }
+  tbody tr:hover td { background: #f3f7fc; }
+  tbody tr.seleccionada td { outline: 1px solid var(--seleccion); outline-offset: -1px; }
+  td.estado {
+    text-align: center; font-weight: 700; font-size: 11px; letter-spacing: .03em;
+  }
+  .DISPONIBLE { background: var(--verde) !important; color: var(--verde-texto); }
+  .REGANDO { background: var(--verde) !important; color: var(--verde-texto); animation: parpadeo 1s steps(2, start) infinite; }
+  .FUGA { background: var(--rojo) !important; color: var(--rojo-texto); }
+  .FUERA_SERVICIO { background: var(--naranja) !important; color: var(--naranja-texto); }
+  .DESCONECTADA { background: var(--gris) !important; color: var(--gris-texto); }
+  @keyframes parpadeo { to { background: var(--verde-claro); } }
+  @media (prefers-reduced-motion: reduce) { .REGANDO { animation: none; } }
+  .vacio td { text-align: center; color: var(--tenue); padding: 18px; cursor: default; }
+  .nota { font-size: 11px; color: var(--tenue); margin: 6px 0 0; }
+
+  /* Lateral */
+  .lateral { display: flex; flex-direction: column; gap: 12px; }
+  .caja { background: var(--blanco); border: 1px solid var(--borde); }
+  .caja h2 {
+    margin: 0; padding: 5px 8px; font-size: 11px; font-weight: 700;
+    letter-spacing: .04em; text-transform: uppercase;
+    background: var(--cabecera-tabla); border-bottom: 1px solid var(--borde);
+  }
+  .caja dl { margin: 0; padding: 6px 8px; display: grid; grid-template-columns: 1fr auto; gap: 4px 8px; }
+  .caja dt { color: var(--texto); }
+  .caja dd { margin: 0; text-align: right; font-weight: 700; font-family: Consolas, ui-monospace, monospace; }
+  .leyenda { padding: 6px 8px; display: grid; gap: 3px; }
+  .leyenda span::before {
+    content: ""; display: inline-block; width: 11px; height: 11px; margin-right: 6px;
+    vertical-align: -1px; border: 1px solid rgba(0, 0, 0, .2); background: var(--c);
+  }
+  .sin-seleccion { padding: 8px; color: var(--tenue); }
+
+  /* Mensajes */
+  .mensajes { margin: 0 12px 12px; }
+  .mensajes .bloque-titulo {
+    margin: 0; padding: 5px 8px; color: #fff; background: #2d333b;
+  }
+  #eventos {
+    margin: 0; padding: 8px; height: 170px; overflow-y: auto;
+    background: var(--consola); color: var(--consola-texto);
+    font-family: Consolas, ui-monospace, monospace; font-size: 12px; white-space: pre-wrap;
+  }
+  #eventos .WARNING { color: #f2cc60; }
+  #eventos .ERROR { color: #ff7b72; }
+
+  /* Barra de estado */
+  .estado-app {
+    display: flex; flex-wrap: wrap; gap: 4px 16px; align-items: center;
+    padding: 4px 10px; font-size: 12px; color: var(--tenue);
+    border-top: 1px solid var(--borde); background: #eceef1;
+  }
+  .estado-app .derecha { margin-left: auto; }
+  .punto { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; background: #8b949e; }
+  .punto.ok { background: #2da44e; }
+  .punto.ko { background: #cf222e; }
+</style>
+</head>
+<body>
+<div class="ventana">
+  <div class="titulo">
+    <span class="icono"></span>
+    <h1>WM_Central — Panel de monitorización del riego</h1>
+    <div class="controles-ventana" aria-hidden="true"><span></span><span></span><span></span></div>
+  </div>
+
+  <div class="herramientas">
+    <button data-accion="INICIAR"><i style="background:#2da44e"></i>Iniciar riego</button>
+    <label>Duración (s) <input id="duracion" type="number" min="1" max="3600" value="30"></label>
+    <span class="separador"></span>
+    <button data-accion="BLOQUEAR"><i style="background:#e8890c"></i>Bloquear WS</button>
+    <button data-accion="ACTIVAR"><i style="background:#2da44e"></i>Activar WS</button>
+    <span class="separador"></span>
+    <label><input id="todas" type="checkbox"> Aplicar a todas</label>
+    <button id="refrescar"><i style="background:#6e7781"></i>Refrescar</button>
+    <span id="resultado">Selecciona una estación en la tabla.</span>
+  </div>
+
+  <div class="cuerpo">
+    <section>
+      <p class="bloque-titulo" id="titulo-tabla">Estaciones de riego (WS)</p>
+      <div class="tabla-contenedor">
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th><th>Ubicación</th><th>Estado</th>
+              <th class="num">Caudal (L/min)</th><th class="num">Vol. acum. (L)</th>
+              <th class="num">Tiempo (s)</th><th>Operario</th>
+            </tr>
+          </thead>
+          <tbody id="filas">
+            <tr class="vacio"><td colspan="7">Sin estaciones registradas.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="nota">Las estaciones en estado REGANDO parpadean en verde.</p>
+    </section>
+
+    <aside class="lateral">
+      <div class="caja">
+        <h2>Resumen del sistema</h2>
+        <dl id="resumen"></dl>
+      </div>
+      <div class="caja">
+        <h2>Leyenda de estados</h2>
+        <div class="leyenda">
+          <span style="--c: var(--verde)">Disponible / Regando (parpadea)</span>
+          <span style="--c: var(--rojo)">Fuga</span>
+          <span style="--c: var(--naranja)">Fuera de servicio</span>
+          <span style="--c: var(--gris)">Desconectada</span>
+        </div>
+      </div>
+      <div class="caja">
+        <h2 id="titulo-detalle">WS seleccionada</h2>
+        <div id="detalle"><p class="sin-seleccion">Ninguna estación seleccionada.</p></div>
+      </div>
+    </aside>
+  </div>
+
+  <div class="mensajes">
+    <p class="bloque-titulo">Mensajes de la aplicación</p>
+    <pre id="eventos"></pre>
+  </div>
+
+  <div class="estado-app">
+    <span><span id="punto-kafka" class="punto"></span><span id="texto-kafka">Conectando…</span></span>
+    <span class="derecha" id="total"></span>
+    <span id="reloj"></span>
+  </div>
+</div>
+
+<script>
+  // Todo el texto se pone con textContent: los datos (ubicaciones, IDs) llegan
+  // de los Monitores y nunca se interpretan como HTML.
+  const NOMBRES = {
+    DISPONIBLE: "DISPONIBLE", REGANDO: "REGANDO", FUGA: "FUGA",
+    FUERA_SERVICIO: "FUERA DE SERVICIO", DESCONECTADA: "DESCONECTADA",
+  };
+  const RESUMEN = [
+    ["DISPONIBLE", "Disponibles"], ["REGANDO", "Regando"], ["FUGA", "Con fuga"],
+    ["FUERA_SERVICIO", "Fuera de servicio"], ["DESCONECTADA", "Desconectadas"],
+  ];
+  let seleccionada = null;   // ws_id de la fila seleccionada
+  let ultimas = [];          // últimas estaciones recibidas
+
+  function crear(etiqueta, clase, texto) {
+    const nodo = document.createElement(etiqueta);
+    if (clase) nodo.className = clase;
+    if (texto !== undefined) nodo.textContent = texto;
+    return nodo;
+  }
+
+  function operario(riego) {
+    if (!riego) return "—";
+    if (riego.fo_id) return riego.fo_id;
+    return riego.origen === "WS" ? "Estación" : "CENTRAL";
+  }
+
+  function fila(e) {
+    const tr = crear("tr", e.ws_id === seleccionada ? "seleccionada" : "");
+    const r = e.riego;
+    const conectada = e.estado !== "DESCONECTADA";
+    tr.append(
+      crear("td", "id", e.ws_id),
+      crear("td", "", e.ubicacion),
+      crear("td", "estado " + e.estado, NOMBRES[e.estado] || e.estado),
+      crear("td", "num", r ? r.caudal_lpm.toFixed(1) : (conectada ? "0.0" : "–")),
+      crear("td", "num", r ? r.volumen_l.toFixed(1) : (conectada ? "0.0" : "–")),
+      crear("td", "num", r ? String(r.segundos) : "–"),
+      crear("td", "", operario(r)),
+    );
+    tr.addEventListener("click", () => {
+      seleccionada = e.ws_id;
+      document.getElementById("todas").checked = false;
+      pintar();
+    });
+    return tr;
+  }
+
+  function pintarDetalle() {
+    const e = ultimas.find(x => x.ws_id === seleccionada);
+    const contenedor = document.getElementById("detalle");
+    document.getElementById("titulo-detalle").textContent =
+      e ? `WS seleccionada — ${e.ws_id}` : "WS seleccionada";
+    if (!e) {
+      contenedor.replaceChildren(crear("p", "sin-seleccion", "Ninguna estación seleccionada."));
+      return;
+    }
+    const conectada = e.estado !== "DESCONECTADA";
+    const filas = [
+      ["Ubicación", e.ubicacion],
+      ["Estado", NOMBRES[e.estado] || e.estado],
+      ["Caudal actual", e.riego ? `${e.riego.caudal_lpm.toFixed(1)} L/min` : "0.0 L/min"],
+      ["Volumen del riego", e.riego ? `${e.riego.volumen_l.toFixed(1)} L` : "–"],
+      ["Caudalímetro", conectada ? "OK" : "–"],
+      ["Detector de fuga", !conectada ? "–" : (e.averia ? "FUGA" : "OK")],
+      ["Electroválvula", e.estado === "REGANDO" ? "ABIERTA" : "CERRADA"],
+    ];
+    const dl = crear("dl");
+    for (const [clave, valor] of filas) dl.append(crear("dt", "", clave), crear("dd", "", valor));
+    contenedor.replaceChildren(dl);
+  }
+
+  function pintar() {
+    const tbody = document.getElementById("filas");
+    if (ultimas.length === 0) {
+      const tr = crear("tr", "vacio");
+      const td = crear("td", "", "Sin estaciones registradas.");
+      td.colSpan = 7;
+      tr.append(td);
+      tbody.replaceChildren(tr);
+    } else {
+      tbody.replaceChildren(...ultimas.map(fila));
+    }
+    document.getElementById("titulo-tabla").textContent =
+      `Estaciones de riego (WS) — ${ultimas.length} registradas`;
+
+    const resumen = document.getElementById("resumen");
+    resumen.replaceChildren();
+    for (const [estado, texto] of RESUMEN) {
+      const n = ultimas.filter(e => e.estado === estado).length;
+      resumen.append(crear("dt", "", texto), crear("dd", "", String(n)));
+    }
+    pintarDetalle();
+  }
+
+  function pintarEventos(eventos) {
+    const pre = document.getElementById("eventos");
+    const abajo = pre.scrollTop + pre.clientHeight >= pre.scrollHeight - 5;
+    pre.replaceChildren(...eventos.map(e => crear("div", e.nivel, e.texto)));
+    if (abajo) pre.scrollTop = pre.scrollHeight;
+  }
+
+  async function actualizar() {
+    const punto = document.getElementById("punto-kafka");
+    const texto = document.getElementById("texto-kafka");
+    try {
+      const respuesta = await fetch("/api/estado", { cache: "no-store" });
+      const datos = await respuesta.json();
+      ultimas = datos.estaciones;
+      if (seleccionada && !ultimas.some(e => e.ws_id === seleccionada)) seleccionada = null;
+      pintar();
+      pintarEventos(datos.eventos);
+      punto.className = "punto " + (datos.kafka ? "ok" : "ko");
+      texto.textContent = datos.kafka
+        ? `WM_Central — Conectado a Kafka (broker ${datos.broker})`
+        : (datos.broker ? `WM_Central — Sin conexión con Kafka (${datos.broker})`
+                        : "WM_Central — Sin Kafka: solo Monitores");
+      document.getElementById("total").textContent = `${ultimas.length} estaciones registradas`;
+    } catch (error) {
+      punto.className = "punto ko";
+      texto.textContent = "Sin conexión con WM_Central";
+    }
+  }
+
+  async function ordenar(accion) {
+    const resultado = document.getElementById("resultado");
+    const todas = document.getElementById("todas").checked;
+    if (!todas && !seleccionada) {
+      resultado.className = "error";
+      resultado.textContent = "Selecciona una estación o marca «Aplicar a todas».";
+      return;
+    }
+    const destino = todas ? null : seleccionada;
+    const cuerpo = { accion, ws_id: destino };
+    if (accion === "INICIAR") cuerpo.duracion_s = Number(document.getElementById("duracion").value);
+    const botones = document.querySelectorAll("button[data-accion]");
+    botones.forEach(b => b.disabled = true);
+    try {
+      const respuesta = await fetch("/api/orden", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(cuerpo),
+      });
+      const datos = await respuesta.json();
+      resultado.className = respuesta.ok ? "" : "error";
+      resultado.textContent = respuesta.ok
+        ? `Orden ${accion} enviada a ${destino || "todas las estaciones"}.`
+        : datos.error;
+    } catch (error) {
+      resultado.className = "error";
+      resultado.textContent = "No se pudo enviar la orden a WM_Central.";
+    } finally {
+      botones.forEach(b => b.disabled = false);
+      actualizar();
+    }
+  }
+
+  function reloj() {
+    document.getElementById("reloj").textContent = new Date().toLocaleString("es-ES");
+  }
+
+  document.querySelectorAll("button[data-accion]").forEach(boton =>
+    boton.addEventListener("click", () => ordenar(boton.dataset.accion)));
+  document.getElementById("refrescar").addEventListener("click", actualizar);
+  actualizar();
+  reloj();
+  setInterval(actualizar, 1000);
+  setInterval(reloj, 1000);
+</script>
+</body>
+</html>

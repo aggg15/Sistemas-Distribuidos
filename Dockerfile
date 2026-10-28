@@ -7,8 +7,10 @@ RUN mkdir -p /app/data
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 COPY common/ ./common/
-COPY WM_Central.py WM_WS_M.py gestor_riegos.py ./
+COPY WM_Central.py WM_WS_M.py gestor_riegos.py panel_web.py ./
+COPY panel/ ./panel/
 COPY scripts/gestionar_bd.py ./scripts/gestionar_bd.py
 
-EXPOSE 9999
+# 9999: sockets de los Monitores. 8080: panel web.
+EXPOSE 9999 8080
 CMD ["python", "WM_Central.py"]

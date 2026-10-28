@@ -17,6 +17,7 @@ services:
     image: ${WM_CENTRAL_IMAGE:-wm-central:local}
     ports:
       - "${WM_SOCKET_PUBLISHED_PORT:-9999}:${WM_SOCKET_PORT:-9999}"
+      - "${WM_HTTP_PUBLISHED_PORT:-8080}:8080"  # panel web
     depends_on: [kafka]
     environment:
       WM_SOCKET_PORT: ${WM_SOCKET_PORT:-9999}

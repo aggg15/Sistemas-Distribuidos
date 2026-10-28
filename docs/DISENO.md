@@ -22,8 +22,8 @@ El despliegue en la nube pasa a hacerse en **AWS** en lugar de Railway.
 Actualización (28 de octubre de 2026, 2): CENTRAL consume Kafka y gestiona el
 ciclo de riego completo en `gestor_riegos.py` (solicitudes, autorización,
 telemetría, resumen, cortes por avería, desconexión o bloqueo, y órdenes sobre
-una estación o todas). `WM_FO.py` implementa la aplicación del operario. Siguen
-pendientes el panel web, que dará acceso a las órdenes de CENTRAL, y AWS.
+una estación o todas). `WM_FO.py` implementa la aplicación del operario. El
+panel web (apartado 6) muestra el estado y da acceso a las órdenes de CENTRAL.
 
 El registro de comunicaciones actual solo indica si un Monitor está conectado.
 El futuro estado DISPONIBLE exigirá además confirmar que el Engine está listo.
@@ -250,20 +250,29 @@ CREATE TABLE riegos (
 ## 6. Panel de CENTRAL
 
 CENTRAL se despliega en la nube (AWS), donde no hay una terminal interactiva. Por eso
-el panel es **web**, servido por la propia CENTRAL con Flask:
+el panel es **web**, servido por la propia CENTRAL (`panel_web.py` y
+`panel/index.html`). Se usa el servidor HTTP de la biblioteca estándar
+(`http.server`) en lugar de Flask: basta para dos rutas y no añade dependencias.
 
 - La página consulta `GET /api/estado` cada segundo y muestra una tarjeta por
-  estación con su color, ubicación y, si está regando, caudal, volumen y operario.
+  estación con su color, ubicación y, si está regando, caudal, volumen,
+  operario y tiempo.
 - Botones para iniciar riego, bloquear o activar una estación o todas
-  (`POST /api/orden`).
-- Registro de eventos, que también se escribe en consola para verlo en los logs.
+  (`POST /api/orden`, con `{"accion", "ws_id" o null, "duracion_s"}`).
+- Registro de los últimos 100 eventos de CENTRAL, que también se escriben en
+  consola para verlos en los logs.
+- Los textos que llegan de las estaciones se muestran con `textContent`, nunca
+  como HTML: una ubicación maliciosa no puede inyectar código en el panel.
+- El panel no tiene autenticación en esta versión: cualquiera que alcance el
+  puerto puede dar órdenes.
 
-CENTRAL necesita dos puertos públicos: HTTP para el panel y TCP para los Monitores.
+CENTRAL necesita dos puertos públicos: HTTP para el panel (8080, opción
+`--http`; `--http 0` lo desactiva) y TCP para los Monitores (9999).
 
 ## 7. Argumentos de las aplicaciones
 
 ```text
-WM_Central <puerto_sockets> <kafka_ip:puerto> [--db wm.db]
+WM_Central <puerto_sockets> <kafka_ip:puerto> [--http 8080] [--db wm.db]
 WM_WS_M    <central_ip> <central_puerto> <ws_id> <ubicacion> --puerto-engine <puerto>
 WM_WS_E    <kafka_ip:puerto> <monitor_ip> <monitor_puerto>
 WM_FO      <kafka_ip:puerto> <fo_id> [--fichero peticiones.txt]

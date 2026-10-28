@@ -54,3 +54,4 @@ echo
 echo "Listo. Desde los laboratorios:"
 echo "  CENTRAL (sockets): $IP_PUBLICA:9999"
 echo "  Kafka:             $IP_PUBLICA:9092"
+echo "  Panel web:         http://$IP_PUBLICA:8080"
