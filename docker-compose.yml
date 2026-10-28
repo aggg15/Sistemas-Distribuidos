@@ -6,18 +6,29 @@
 #
 # Para que otros PCs del laboratorio se conecten, arrancar indicando la IP
 # de este equipo:  KAFKA_HOST=192.168.1.20 docker compose up -d kafka
+#
+# En AWS se usa deploy/arrancar_aws.sh, que pone la IP pública automáticamente
+# (guía completa en docs/DESPLIEGUE_AWS.md).
 services:
   central:
     build: .
+    # En AWS, WM_CENTRAL_IMAGE (fichero .env) apunta a la imagen de Docker Hub
+    # que publica GitHub Actions; en local se construye con el nombre por defecto.
+    image: ${WM_CENTRAL_IMAGE:-wm-central:local}
     ports:
       - "${WM_SOCKET_PUBLISHED_PORT:-9999}:${WM_SOCKET_PORT:-9999}"
+    depends_on: [kafka]
     environment:
       WM_SOCKET_PORT: ${WM_SOCKET_PORT:-9999}
       WM_SOCKET_TIMEOUT: ${WM_CENTRAL_TIMEOUT:-6}
       WM_DB_PATH: /app/data/wm.db
+      # Dentro de la red de Docker, Kafka se alcanza por su listener INTERNAL.
+      WM_KAFKA_SERVER: ${WM_KAFKA_SERVER:-kafka:29092}
     volumes:
       - wm-datos:/app/data
     stop_grace_period: 10s
+    # Vuelve a arrancar sola si se cae o si se reinicia la máquina (AWS).
+    restart: unless-stopped
 
   # Prueba opcional del enlace TCP: docker compose --profile demo up --build central monitor
   monitor:
@@ -38,9 +49,12 @@ services:
   kafka:
     image: apache/kafka:3.9.1
     container_name: wm-kafka
+    restart: unless-stopped
     ports:
       - "9092:9092"
     environment:
+      # Memoria de Java acotada para que quepa en una instancia pequeña (2 GB).
+      KAFKA_HEAP_OPTS: ${KAFKA_HEAP_OPTS:--Xmx512m -Xms512m}
       KAFKA_NODE_ID: 1
       # Este único nodo hace de broker (guarda mensajes) y de controlador (metadatos).
       KAFKA_PROCESS_ROLES: broker,controller
