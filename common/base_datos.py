@@ -135,12 +135,27 @@ class BaseDatos:
             conexion.execute("UPDATE riegos SET inicio=? WHERE id=?", (_ahora(), riego_id))
 
     def cerrar_riego(self, riego_id, duracion_s, volumen_l, motivo):
+        # COALESCE: si el Engine envía después sus datos definitivos de un riego
+        # que CENTRAL ya cerró, se corrigen volumen y duración pero no la hora de fin.
         with self._conexion() as conexion:
             conexion.execute(
-                """UPDATE riegos SET fin=?, duracion_s=?, volumen_l=?, motivo_fin=?
-                   WHERE id=?""",
+                """UPDATE riegos SET fin=COALESCE(fin, ?), duracion_s=?, volumen_l=?,
+                   motivo_fin=? WHERE id=?""",
                 (_ahora(), duracion_s, volumen_l, motivo, riego_id),
             )
+
+    def obtener_riego(self, riego_id):
+        with self._conexion() as conexion:
+            fila = conexion.execute("SELECT * FROM riegos WHERE id=?", (riego_id,)).fetchone()
+            return dict(fila) if fila is not None else None
+
+    def volumen_por_estacion(self):
+        """Litros suministrados en total por cada estación (riegos ya cerrados)."""
+        with self._conexion() as conexion:
+            return {fila["ws_id"]: fila["total"] for fila in conexion.execute(
+                """SELECT ws_id, COALESCE(SUM(volumen_l), 0) AS total
+                   FROM riegos WHERE fin IS NOT NULL GROUP BY ws_id"""
+            )}
 
     def borrar_riego(self, riego_id):
         with self._conexion() as conexion:

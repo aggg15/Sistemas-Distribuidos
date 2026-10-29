@@ -8,26 +8,33 @@ Hilos:
 """
 
 import argparse
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 import itertools
+import json
 import logging
 import os
+from pathlib import Path
 import random
 import signal
 import socket
 import threading
+import time
 
 from kafka.errors import KafkaError
 
 from common.configuracion import positivo, puerto
-from common.kafka_utils import (TOPIC_EVENTOS_WS, TOPIC_ORDENES, TOPIC_PETICIONES,
-                                crear_consumidor, crear_productor, enviar)
+from common.kafka_utils import (TOPIC_ESTADO_RED, TOPIC_EVENTOS_WS, TOPIC_ORDENES,
+                                TOPIC_PETICIONES, crear_consumidor, crear_productor, enviar)
+from common.latido import MENSAJE_CAIDA, PLAZO_S, LatidoCentral
 from common.protocolo import Canal, ConexionCerrada, ErrorProtocolo
 
 LOG = logging.getLogger("WM_WS_E")
 
 CAUDAL_MIN_LPM = 10.0
 CAUDAL_MAX_LPM = 20.0
+# Una orden de riego más antigua (p. ej. enviada mientras el Engine estaba
+# caído) ya la canceló CENTRAL por falta de respuesta: no se ejecuta.
+CADUCIDAD_ORDEN_S = 5.0
 
 
 @dataclass
@@ -42,17 +49,26 @@ class Riego:
 
 class EstacionSimulada:
     """Estado de la estación. No usa red: publica a través de la función publicar,
-    que devuelve True si el mensaje se ha entregado."""
+    que devuelve True si el mensaje se ha entregado.
 
-    def __init__(self, publicar, medir_caudal=None):
+    Con carpeta_datos, el riego en curso y los resultados aún no entregados se
+    guardan en disco: si el Engine se cae, al volver envía lo que llegó a regar.
+    """
+
+    def __init__(self, publicar, medir_caudal=None, carpeta_datos=None):
         self.publicar = publicar
         self.medir_caudal = medir_caudal or (
             lambda: random.uniform(CAUDAL_MIN_LPM, CAUDAL_MAX_LPM))
+        self.carpeta_datos = carpeta_datos
         self.ws_id = None
         self.id_asignado = threading.Event()
+        self.monitor_conectado = False
+        self.latido = LatidoCentral()
         self.averia = False
         self.bloqueada = False
         self.riego = None
+        self._pendientes = []  # RIEGO_FINALIZADO que Kafka aún no ha confirmado
+        self._ruta = None
         self._lock = threading.Lock()
         self._peticiones = itertools.count(1)
 
@@ -65,13 +81,80 @@ class EstacionSimulada:
                 if self.ws_id not in (None, campos[1]):
                     return "KO#Este Engine ya pertenece a otra estacion"
                 self.ws_id = campos[1]
+            self._monitor_presente()
             if not self.id_asignado.is_set():
                 LOG.info("ID asignado por el Monitor: %s", self.ws_id)
+                self._recuperar()
                 self.id_asignado.set()
             return "OK"
         if texto == "CHECK":
+            self._monitor_presente()
             return "KO" if self.averia else "OK"
         return "KO#Operacion desconocida"
+
+    def _monitor_presente(self):
+        with self._lock:
+            volvio = not self.monitor_conectado
+            self.monitor_conectado = True
+        if volvio:
+            LOG.info("Monitor conectado: la estación vuelve a estar operativa")
+
+    def perder_monitor(self):
+        """Sin Monitor, CENTRAL ve la estación DESCONECTADA: no se riega."""
+        with self._lock:
+            estaba = self.monitor_conectado
+            self.monitor_conectado = False
+        if estaba:
+            LOG.warning("AVERIADA: sin conexión con el Monitor. No se admiten riegos")
+            self.finalizar("DESCONEXION")
+
+    # --- Persistencia local --------------------------------------------------
+
+    def _guardar(self):
+        """Llamar con el lock tomado. Escritura atómica: fichero temporal y replace."""
+        if self._ruta is None:
+            return
+        datos = {"riego": asdict(self.riego) if self.riego else None,
+                 "pendientes": self._pendientes}
+        temporal = self._ruta.with_suffix(".tmp")
+        temporal.write_text(json.dumps(datos), encoding="utf-8")
+        os.replace(temporal, self._ruta)
+
+    def _recuperar(self):
+        """Al conocer el ID: si quedó un riego a medias por una caída, se da por
+        terminado con lo que se llegó a regar y se deja pendiente de enviar."""
+        if self.carpeta_datos is None:
+            return
+        ruta = Path(self.carpeta_datos) / f"engine_{self.ws_id}.json"
+        ruta.parent.mkdir(parents=True, exist_ok=True)
+        with self._lock:
+            self._ruta = ruta
+            try:
+                datos = json.loads(ruta.read_text(encoding="utf-8"))
+            except FileNotFoundError:
+                return
+            except (OSError, ValueError) as error:
+                LOG.warning("No se pudo leer %s: %s", ruta, error)
+                return
+            self._pendientes = datos.get("pendientes", [])
+            anterior = datos.get("riego")
+            if anterior:
+                LOG.warning("Riego %s interrumpido por una caída del Engine: %.2f L en %s s",
+                            anterior["riego_id"], anterior["volumen_l"], anterior["segundos"])
+                self._pendientes.append(self._fin(Riego(**anterior), "FUGA", recuperado=True))
+            self._guardar()
+
+    def reenviar_pendientes(self):
+        """Envía los resultados que no llegaron a CENTRAL. Se llama cada segundo."""
+        with self._lock:
+            pendientes = list(self._pendientes)
+        for mensaje in pendientes:
+            if not self.publicar(TOPIC_EVENTOS_WS, mensaje):
+                return  # se reintentará en la próxima llamada
+            with self._lock:
+                self._pendientes.remove(mensaje)
+                self._guardar()
+            LOG.info("Estado final del riego %s enviado a CENTRAL", mensaje["riego_id"])
 
     # --- Órdenes de CENTRAL --------------------------------------------------
 
@@ -94,6 +177,8 @@ class EstacionSimulada:
             with self._lock:
                 self.bloqueada = False
             LOG.info("Estación ACTIVADA por orden de CENTRAL")
+        elif tipo == "DENEGADO":
+            LOG.warning("CENTRAL deniega el riego solicitado: %s", orden.get("texto"))
         else:
             LOG.warning("Orden desconocida: %s", orden)
 
@@ -106,7 +191,9 @@ class EstacionSimulada:
             self._rechazar(orden.get("riego_id"), "ORDEN_INVALIDA")
             return
         with self._lock:
-            if self.averia:
+            if not self.monitor_conectado:
+                motivo = "SIN_MONITOR"
+            elif self.averia:
                 motivo = "FUGA"
             elif self.bloqueada:
                 motivo = "BLOQUEADA"
@@ -115,6 +202,7 @@ class EstacionSimulada:
             else:
                 motivo = None
                 self.riego = riego
+                self._guardar()
         if motivo is not None:
             self._rechazar(riego.riego_id, motivo)
             return
@@ -144,6 +232,7 @@ class EstacionSimulada:
             riego.volumen_l += riego.caudal_lpm / 60  # litros por minuto → por segundo
             riego.segundos += 1
             terminado = riego.segundos >= riego.duracion_s
+            self._guardar()  # lo regado no se pierde aunque el Engine caiga ahora
             telemetria = {
                 "tipo": "TELEMETRIA", "ws_id": self.ws_id, "riego_id": riego.riego_id,
                 "caudal_lpm": round(riego.caudal_lpm, 2),
@@ -162,14 +251,24 @@ class EstacionSimulada:
             if riego is None or (riego_id is not None and riego.riego_id != riego_id):
                 return False
             self.riego = None
+            self._guardar()
         LOG.info("Electroválvula CERRADA (%s): riego %s | %.2f L en %s s",
                  motivo, riego.riego_id, riego.volumen_l, riego.segundos)
-        self.publicar(TOPIC_EVENTOS_WS, {
-            "tipo": "RIEGO_FINALIZADO", "ws_id": self.ws_id, "riego_id": riego.riego_id,
-            "motivo": motivo, "volumen_l": round(riego.volumen_l, 2),
-            "duracion_s": riego.segundos,
-        })
+        mensaje = self._fin(riego, motivo)
+        if not self.publicar(TOPIC_EVENTOS_WS, mensaje):
+            # No se pierde: se reenvía en cuanto Kafka vuelva (reenviar_pendientes).
+            with self._lock:
+                self._pendientes.append({**mensaje, "recuperado": True})
+                self._guardar()
         return True
+
+    def _fin(self, riego, motivo, recuperado=False):
+        mensaje = {"tipo": "RIEGO_FINALIZADO", "ws_id": self.ws_id,
+                   "riego_id": riego.riego_id, "motivo": motivo,
+                   "volumen_l": round(riego.volumen_l, 2), "duracion_s": riego.segundos}
+        if recuperado:
+            mensaje["recuperado"] = True
+        return mensaje
 
     # --- Menú de la estación -------------------------------------------------
 
@@ -187,6 +286,10 @@ class EstacionSimulada:
         """Riego manual: se pide a CENTRAL, que es quien lo autoriza."""
         if self.ws_id is None:
             raise ValueError("La estación aún no tiene ID")
+        if not self.monitor_conectado:
+            raise ValueError("Estación AVERIADA: sin conexión con el Monitor")
+        if not self.latido.disponible:
+            raise ValueError(MENSAJE_CAIDA)
         peticion = {
             "tipo": "SOLICITUD", "peticion_id": f"{self.ws_id}-{next(self._peticiones)}",
             "origen": "WS", "ws_id": self.ws_id, "duracion_s": duracion_s,
@@ -199,7 +302,9 @@ class EstacionSimulada:
         with self._lock:
             if self.ws_id is None:
                 return "Sin ID: esperando al Monitor"
-            if self.averia:
+            if not self.monitor_conectado:
+                estado = "AVERIADA (sin conexión con el Monitor)"
+            elif self.averia:
                 estado = "AVERÍA (KO)"
             elif self.bloqueada:
                 estado = "FUERA DE SERVICIO"
@@ -216,14 +321,14 @@ class Engine:
     """Conecta la estación simulada con el Monitor (sockets) y con Kafka."""
 
     def __init__(self, servidor_kafka, monitor_host, monitor_puerto, timeout=3.0,
-                 reintento=2.0):
+                 reintento=2.0, carpeta_datos=None):
         self.servidor_kafka = servidor_kafka
         self.monitor = (monitor_host, monitor_puerto)
         self.timeout = timeout
         self.reintento = reintento
         self.parada = threading.Event()
         self.productor = None
-        self.estacion = EstacionSimulada(self.publicar)
+        self.estacion = EstacionSimulada(self.publicar, carpeta_datos=carpeta_datos)
 
     def publicar(self, topic, mensaje):
         """Devuelve True solo si Kafka confirma la entrega."""
@@ -254,6 +359,8 @@ class Engine:
             except (OSError, ErrorProtocolo) as error:
                 LOG.warning("Sin conexión con el Monitor (%s). Reintento en %.1f s",
                             error, self.reintento)
+            if not self.parada.is_set():
+                self.estacion.perder_monitor()
             self.parada.wait(self.reintento)
 
     def escuchar_ordenes(self):
@@ -266,7 +373,8 @@ class Engine:
             try:
                 if self.productor is None:
                     self.productor = crear_productor(self.servidor_kafka)
-                consumidor = crear_consumidor(self.servidor_kafka, [TOPIC_ORDENES], grupo)
+                consumidor = crear_consumidor(self.servidor_kafka,
+                                              [TOPIC_ORDENES, TOPIC_ESTADO_RED], grupo)
             except (KafkaError, OSError) as error:
                 LOG.warning("Kafka no disponible (%s). Reintento en %.1f s",
                             error, self.reintento)
@@ -278,15 +386,35 @@ class Engine:
                     # poll con plazo para poder comprobar la parada periódicamente.
                     for registros in consumidor.poll(timeout_ms=500).values():
                         for registro in registros:
-                            self.estacion.procesar_orden(registro.value)
+                            self._recibir(registro)
             except (KafkaError, OSError, ValueError) as error:
                 LOG.warning("Error leyendo órdenes de Kafka: %s", error)
             finally:
                 consumidor.close()
 
+    def _recibir(self, registro):
+        # registro.timestamp: milisegundos desde 1970 en que se envió.
+        antiguedad_s = time.time() - registro.timestamp / 1000
+        mensaje = registro.value
+        if registro.topic == TOPIC_ESTADO_RED:
+            # Los antiguos (leídos al arrancar) no dicen nada de CENTRAL ahora.
+            if antiguedad_s < PLAZO_S and self.estacion.latido.recibido():
+                LOG.info("WM_Central disponible de nuevo")
+            return
+        if (isinstance(mensaje, dict) and mensaje.get("tipo") == "INICIAR_RIEGO"
+                and antiguedad_s > CADUCIDAD_ORDEN_S):
+            LOG.warning("Orden de riego %s caducada: se ignora", mensaje.get("riego_id"))
+            return
+        self.estacion.procesar_orden(mensaje)
+
     def simular_riego(self):
         while not self.parada.wait(1.0):
             self.estacion.avanzar_segundo()
+            if self.productor is not None:
+                self.estacion.reenviar_pendientes()
+            if self.estacion.latido.revisar():
+                LOG.warning("%s: no se admiten nuevos riegos (el riego en curso continúa)",
+                            MENSAJE_CAIDA)
 
     def arrancar(self):
         for objetivo in (self.conectar_monitor, self.escuchar_ordenes, self.simular_riego):
@@ -354,6 +482,8 @@ def main(argv=None):
     parser.add_argument("--timeout", type=positivo, default=os.getenv("WM_SOCKET_TIMEOUT", "3"))
     parser.add_argument("--reintento", type=positivo,
                         default=os.getenv("WM_RECONNECT_DELAY", "2"))
+    parser.add_argument("--datos", default=os.getenv("WM_ENGINE_DATA", "data"),
+                        help="Carpeta donde se guarda el riego en curso (por defecto data)")
     args = parser.parse_args(argv)
     if not args.kafka or not args.monitor_host or args.monitor_puerto is None:
         parser.error("Indica Kafka (ip:puerto) y el host y puerto del Monitor")
@@ -363,7 +493,7 @@ def main(argv=None):
     logging.getLogger("kafka").setLevel(logging.WARNING)
 
     engine = Engine(args.kafka, args.monitor_host, args.monitor_puerto,
-                    args.timeout, args.reintento)
+                    args.timeout, args.reintento, args.datos)
     signal.signal(signal.SIGTERM, interrumpir)
     engine.arrancar()
     try:

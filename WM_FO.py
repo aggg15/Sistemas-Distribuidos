@@ -12,13 +12,13 @@ import queue
 import signal
 import threading
 import time
-import uuid
 
 from kafka.errors import KafkaError
 
 from common.configuracion import campo_valido, positivo
 from common.kafka_utils import (TOPIC_ESTADO_RED, TOPIC_NOTIFICACIONES, TOPIC_PETICIONES,
                                 crear_consumidor, crear_productor, enviar)
+from common.latido import MENSAJE_CAIDA, PLAZO_S, LatidoCentral
 
 LOG = logging.getLogger("WM_FO")
 
@@ -68,15 +68,18 @@ class Operario:
         self.listo = threading.Event()
         self.productor = None
         self.estaciones = []
+        self.latido = LatidoCentral()
         self._en_curso = None          # peticion_id que se está siguiendo
         self._eventos = queue.Queue()  # notificaciones de esa petición
 
     # --- Kafka ---------------------------------------------------------------
 
     def escuchar(self):
-        # Grupo propio por ejecución: si se abren dos FO con el mismo ID, los
-        # dos reciben todo (en un mismo grupo se repartirían los mensajes).
-        grupo = f"fo-{self.fo_id}-{uuid.uuid4().hex[:8]}"
+        # Grupo fijo por operario: Kafka recuerda hasta dónde leyó. Si el FO se
+        # cierra durante un riego, al volver recibe lo que se envió mientras
+        # tanto (por ejemplo el RESUMEN). Por eso no conviene abrir dos FO con el
+        # mismo ID a la vez: en un mismo grupo se reparten los mensajes.
+        grupo = f"fo-{self.fo_id}"
         while not self.parada.is_set():
             try:
                 if self.productor is None:
@@ -99,18 +102,33 @@ class Operario:
                         self.listo.set()
                     for registros in lotes.values():
                         for registro in registros:
-                            self._recibir(registro.topic, registro.value)
+                            # registro.timestamp: milisegundos desde 1970.
+                            antiguedad_s = time.time() - registro.timestamp / 1000
+                            self._recibir(registro.topic, registro.value, antiguedad_s)
+                    if self.listo.is_set():
+                        self.revisar_central()
             except (KafkaError, OSError, ValueError) as error:
                 LOG.warning("Error leyendo de Kafka: %s", error)
             finally:
                 consumidor.close()
 
-    def _recibir(self, topic, mensaje):
+    def revisar_central(self):
+        if self.latido.revisar():
+            print(f"[ NO] {MENSAJE_CAIDA}: no se pueden solicitar riegos", flush=True)
+
+    def _recibir(self, topic, mensaje, antiguedad_s=0.0):
         if not isinstance(mensaje, dict):
             return
         if topic == TOPIC_ESTADO_RED:
             self.estaciones = mensaje.get("estaciones", [])
+            # Un ESTADO_RED antiguo (leído al volver) no dice nada de CENTRAL ahora.
+            if antiguedad_s < PLAZO_S and self.latido.recibido():
+                print("[ OK] WM_Central disponible de nuevo", flush=True)
         elif mensaje.get("fo_id") == self.fo_id:
+            if mensaje.get("tipo") == "TELEMETRIA" and antiguedad_s > PLAZO_S:
+                return  # telemetría atrasada de mientras el FO estaba cerrado
+            if antiguedad_s > PLAZO_S:
+                print("(mientras estabas desconectado) ", end="")
             print(formatear(mensaje), flush=True)
             if mensaje.get("peticion_id") == self._en_curso:
                 self._eventos.put(mensaje)
@@ -119,6 +137,9 @@ class Operario:
 
     def solicitar(self, ws_id, duracion_s):
         """Pide un riego y espera a que termine. Devuelve True si llegó a regar."""
+        if not self.latido.disponible:
+            print(f"[ NO] {MENSAJE_CAIDA}: inténtalo cuando vuelva")
+            return False
         peticion_id = f"{self.fo_id}-{int(time.time() * 1000)}"
         self._eventos = queue.Queue()
         self._en_curso = peticion_id
@@ -136,7 +157,8 @@ class Operario:
                 try:
                     evento = self._eventos.get(timeout=SILENCIO_MAXIMO_S)
                 except queue.Empty:
-                    print(f"[ NO] CENTRAL no responde ({SILENCIO_MAXIMO_S:.0f} s sin noticias)")
+                    print(f"[ NO] {MENSAJE_CAIDA} ({SILENCIO_MAXIMO_S:.0f} s sin noticias "
+                          "de la solicitud)")
                     return False
                 if evento["tipo"] in FINALES:
                     return evento["tipo"] == "RESUMEN"

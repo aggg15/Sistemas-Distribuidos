@@ -25,6 +25,9 @@ telemetría, resumen, cortes por avería, desconexión o bloqueo, y órdenes sob
 una estación o todas). `WM_FO.py` implementa la aplicación del operario. El
 panel web (apartado 6) muestra el estado y da acceso a las órdenes de CENTRAL.
 
+Actualización (29 de octubre de 2026): resiliencia según la guía de corrección
+(apartado 10) y agua total suministrada por estación en el panel.
+
 El registro de comunicaciones actual solo indica si un Monitor está conectado.
 El futuro estado DISPONIBLE exigirá además confirmar que el Engine está listo.
 Al implementar el ciclo de riego se reservará la estación mientras se tramita
@@ -179,14 +182,15 @@ Decisiones del ciclo implementado:
   la solicitud y envía `PARAR` por si la válvula se abre tarde.
 - **Cortes de CENTRAL**: ante `AVERIA`, desconexión del Monitor o bloqueo,
   CENTRAL cierra el riego sin esperar al Engine (podría estar caído) y envía
-  `PARAR`. El `RIEGO_FINALIZADO` que llegue después se ignora.
+  `PARAR`. El `RIEGO_FINALIZADO` que llegue después solo corrige en la BD el
+  volumen y la duración reales (apartado 10).
 - **Solicitudes caducadas**: las que llevan más de 30 s en Kafka (por ejemplo,
   enviadas mientras CENTRAL estaba caída) se deniegan en lugar de regar tarde.
 - **Estado de la red**: cada 2 s CENTRAL publica en `wm.estado_red` la lista de
   estaciones con su estado.
 
-El Engine rechaza un `INICIAR_RIEGO` con motivo `FUGA`, `BLOQUEADA`, `OCUPADA`
-u `ORDEN_INVALIDA`. CENTRAL ya lo comprueba antes, pero el Engine es quien
+El Engine rechaza un `INICIAR_RIEGO` con motivo `SIN_MONITOR`, `FUGA`,
+`BLOQUEADA`, `OCUPADA` u `ORDEN_INVALIDA`. CENTRAL ya lo comprueba antes, pero el Engine es quien
 controla la electroválvula y no abre si no puede regar:
 
 ```json
@@ -309,3 +313,22 @@ El FO envía cada petición, espera a que termine (con éxito o con error), espe
   (`caudal / 60` litros).
 - El riego termina al agotar su duración, por el menú de la estación, por una
   fuga, por un bloqueo o por una desconexión.
+
+## 10. Resiliencia
+
+Cada caída solo afecta al servicio del componente caído. CENTRAL publica
+`ESTADO_RED` cada 2 s; FO y Engine lo usan como latido (`common/latido.py`): si
+pasan 6 s sin recibirlo muestran «Imposible conectar con WM_Central» y no
+envían solicitudes nuevas hasta que vuelve.
+
+| Cae | Qué pasa | Al recuperarse |
+| --- | --- | --- |
+| Monitor | CENTRAL deja de recibir PING: la WS pasa a DESCONECTADA y corta el riego. El Engine pierde el socket: cierra la válvula, se muestra AVERIADA y rechaza riegos, también los manuales (`SIN_MONITOR`). | El Monitor se registra de nuevo y el Engine vuelve a operar con el primer CHECK. |
+| Engine | El Monitor no recibe respuesta al CHECK y envía `AVERIA`: la WS pasa a FUGA y CENTRAL cierra el riego con la última telemetría y avisa al FO. El Engine guarda cada segundo el riego en curso en `data/engine_<WS>.json`. | Al recibir su ID, el Engine lee ese fichero y envía un `RIEGO_FINALIZADO` con `"recuperado": true` y lo realmente regado. CENTRAL corrige la BD y envía al FO un `RESUMEN` con el estado final. |
+| FO | El riego sigue. | El FO usa un grupo de Kafka fijo (`fo-<id>`): recibe lo que se le envió mientras estaba cerrado (sin la telemetría atrasada) y ve el resultado de su servicio. |
+| CENTRAL | Las WS terminan el riego en curso y se paran. No se admiten solicitudes nuevas: FO y Engine las rechazan, y las que se quedaron en Kafka caducan a los 30 s. El Monitor reintenta la conexión. | Recupera de SQLite las estaciones. Si llega telemetría de un riego abierto en la BD, vuelve a seguirlo (REGANDO). Si llega su `RIEGO_FINALIZADO`, lo cierra y envía el `RESUMEN` al operario. |
+
+Si Kafka no confirma un `RIEGO_FINALIZADO`, el Engine lo guarda como pendiente
+(también en disco) y lo reenvía cada segundo hasta que se entrega. Las órdenes
+`INICIAR_RIEGO` con más de 5 s en Kafka se ignoran: CENTRAL ya las canceló por
+falta de respuesta.

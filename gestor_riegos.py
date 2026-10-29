@@ -60,11 +60,15 @@ class GestorRiegos:
         datos = riego_o_datos
         if isinstance(riego_o_datos, RiegoEnCurso):
             datos = {"fo_id": datos.fo_id, "peticion_id": datos.peticion_id,
-                     "ws_id": datos.ws_id}
+                     "ws_id": datos.ws_id, "origen": datos.origen}
         nivel = logging.WARNING if tipo == "DENEGADO" else logging.INFO
         if tipo != "TELEMETRIA":
             LOG.log(nivel, "[%s] %s: %s", datos["ws_id"], tipo, texto)
         if datos.get("fo_id") is None:
+            if tipo == "DENEGADO" and datos.get("origen") == "WS":
+                # Riego pedido desde el menú de la estación: se le explica el motivo.
+                self.publicar(TOPIC_ORDENES, {"tipo": "DENEGADO", "ws_id": datos["ws_id"],
+                                              "texto": texto}, datos["ws_id"])
             return
         self.publicar(TOPIC_NOTIFICACIONES, {
             "tipo": tipo, "fo_id": datos["fo_id"], "peticion_id": datos["peticion_id"],
@@ -83,7 +87,7 @@ class GestorRiegos:
             return None
         datos = {"fo_id": peticion.get("fo_id") if origen == "FO" else None,
                  "peticion_id": peticion.get("peticion_id"),
-                 "ws_id": peticion.get("ws_id")}
+                 "ws_id": peticion.get("ws_id"), "origen": origen}
         self._avisar(datos, "PASO", f"Solicitud de riego recibida (origen {origen})")
 
         if antiguedad_s > CADUCIDAD_SOLICITUD_S:
@@ -141,8 +145,7 @@ class GestorRiegos:
         with self._lock:
             riego = self.registro.riego_de(ws_id)
             if riego is None or riego.riego_id != evento.get("riego_id"):
-                # Riego ya cerrado por CENTRAL (avería, bloqueo...) o desconocido.
-                LOG.debug("Evento %s de un riego que no está en curso: %s", tipo, evento)
+                self._evento_sin_riego(evento)
                 return
             if tipo == "RIEGO_INICIADO" and not riego.activo:
                 riego.activo = True
@@ -162,6 +165,53 @@ class GestorRiegos:
             elif tipo == "RIEGO_FINALIZADO":
                 self._terminar(riego, evento.get("motivo"), evento.get("volumen_l"),
                                evento.get("duracion_s"))
+
+    def _evento_sin_riego(self, evento):
+        """Evento de un riego que CENTRAL no tiene en memoria. Pasa si CENTRAL se
+        reinició mientras se regaba o si ya lo cerró ella (avería, bloqueo...)."""
+        try:
+            fila = self.bd.obtener_riego(int(evento.get("riego_id")))
+        except (TypeError, ValueError):
+            fila = None
+        if fila is None or fila["ws_id"] != evento.get("ws_id") or fila["inicio"] is None:
+            LOG.debug("Evento de un riego desconocido: %s", evento)
+            return
+        tipo = evento.get("tipo")
+        if tipo == "TELEMETRIA" and fila["fin"] is None:
+            self._recuperar(fila, evento)
+        elif tipo == "RIEGO_FINALIZADO":
+            self._cierre_tardio(fila, evento)
+
+    def _recuperar(self, fila, telemetria):
+        """CENTRAL se reinició con un riego abierto en la BD y la estación sigue
+        regando: se vuelve a seguir ese riego."""
+        riego = RiegoEnCurso(fila["ws_id"], fila["origen"], fila["fo_id"], None, 0,
+                             limite=0, riego_id=fila["id"], activo=True)
+        if self.registro.reservar(fila["ws_id"], riego) is not None:
+            return  # p. ej. el Monitor aún no ha vuelto a conectar: se reintenta con la próxima
+        LOG.info("[%s] Riego %s en curso recuperado tras reiniciar CENTRAL",
+                 fila["ws_id"], fila["id"])
+        self.procesar_evento(telemetria)
+
+    def _cierre_tardio(self, fila, evento):
+        """Datos finales de un riego que CENTRAL no estaba siguiendo. Si ya lo había
+        cerrado, el Engine manda lo que de verdad regó (p. ej. al recuperarse de
+        una caída) y se corrige la BD manteniendo el motivo de CENTRAL."""
+        abierto = fila["fin"] is None
+        motivo = evento.get("motivo") if abierto else fila["motivo_fin"]
+        motivo = motivo if motivo in MOTIVOS_FIN else "MANUAL"
+        volumen_l = evento.get("volumen_l", 0.0)
+        duracion_s = evento.get("duracion_s", 0)
+        self.bd.cerrar_riego(fila["id"], duracion_s, volumen_l, motivo)
+        if not (abierto or evento.get("recuperado")):
+            LOG.debug("Riego %s: datos definitivos del Engine guardados", fila["id"])
+            return
+        datos = {"fo_id": fila["fo_id"], "peticion_id": None, "ws_id": fila["ws_id"],
+                 "origen": fila["origen"]}
+        self._avisar(datos, "RESUMEN",
+                     f"Estado final enviado por la estación (riego {fila['id']}, {motivo}): "
+                     f"{volumen_l:.2f} L en {duracion_s} s",
+                     motivo=motivo, volumen_l=volumen_l, duracion_s=duracion_s)
 
     # --- Cortes decididos por CENTRAL ----------------------------------------
 

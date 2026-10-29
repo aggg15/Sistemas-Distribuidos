@@ -12,6 +12,7 @@ try:
 except ImportError:  # kafka-python no instalado
     Engine = EstacionSimulada = None
 
+from common.latido import LatidoCentral
 from WM_Central import CentralTCP
 from WM_WS_M import SaludEngine, mantener_sesion, vigilar_engine
 
@@ -131,6 +132,74 @@ class PruebasEstacion(unittest.TestCase):
     def test_eventos_van_al_topic_de_la_estacion(self):
         self.iniciar()
         self.assertEqual(self.publicados[-1][0], TOPIC_EVENTOS_WS)
+
+    # --- Resiliencia ---------------------------------------------------------
+
+    def test_sin_monitor_queda_averiada(self):
+        self.iniciar()
+        self.estacion.perder_monitor()
+        self.assertEqual(self.publicados[-1][1]["motivo"], "DESCONEXION")
+        self.iniciar(riego_id=2)
+        self.assertEqual(self.publicados[-1][1]["motivo"], "SIN_MONITOR")
+        with self.assertRaises(ValueError):
+            self.estacion.solicitar_riego(10)  # ni siquiera manualmente
+        self.assertIn("AVERIADA", self.estacion.resumen())
+        self.estacion.responder_monitor("CHECK")  # el Monitor vuelve
+        self.iniciar(riego_id=3)
+        self.assertEqual(self.publicados[-1][1]["tipo"], "RIEGO_INICIADO")
+
+    def test_central_caida_no_admite_solicitudes(self):
+        ahora = [0.0]
+        self.estacion.latido = LatidoCentral(reloj=lambda: ahora[0])
+        ahora[0] = 10.0
+        self.assertTrue(self.estacion.latido.revisar())
+        with self.assertRaises(ValueError):
+            self.estacion.solicitar_riego(10)
+        self.estacion.latido.recibido()
+        self.estacion.solicitar_riego(10)
+
+    def test_resultado_sin_kafka_queda_pendiente(self):
+        self.iniciar()
+        self.estacion.avanzar_segundo()
+        self.kafka_disponible = False
+        self.estacion.finalizar("MANUAL")
+        self.estacion.reenviar_pendientes()  # Kafka sigue caído: no se pierde
+        self.kafka_disponible = True
+        self.estacion.reenviar_pendientes()
+        fin = self.publicados[-1][1]
+        self.assertEqual((fin["tipo"], fin["motivo"], fin["recuperado"]),
+                         ("RIEGO_FINALIZADO", "MANUAL", True))
+        self.estacion.reenviar_pendientes()
+        self.assertEqual(self.tipos().count("RIEGO_FINALIZADO"), 1)
+
+    def test_caida_del_engine_no_pierde_lo_regado(self):
+        carpeta = tempfile.TemporaryDirectory()
+        self.addCleanup(carpeta.cleanup)
+
+        def crear():
+            estacion = EstacionSimulada(lambda t, m: self.publicados.append((t, m)) or True,
+                                        medir_caudal=lambda: 12.0, carpeta_datos=carpeta.name)
+            estacion.responder_monitor("ID#WS-01")
+            return estacion
+
+        antes = crear()
+        antes.procesar_orden({"tipo": "INICIAR_RIEGO", "ws_id": "WS-01", "riego_id": 7,
+                              "fo_id": "FO1", "duracion_s": 10})
+        antes.avanzar_segundo()
+        antes.avanzar_segundo()
+        # Se cae sin avisar (no se llama a finalizar) y arranca otro Engine.
+        self.publicados.clear()
+        despues = crear()
+        self.assertIsNone(despues.riego)
+        despues.reenviar_pendientes()
+        fin = self.publicados[-1][1]
+        self.assertEqual((fin["riego_id"], fin["motivo"], fin["duracion_s"], fin["recuperado"]),
+                         (7, "FUGA", 2, True))
+        self.assertAlmostEqual(fin["volumen_l"], 0.4)
+        # Entregado: un tercer arranque ya no tiene nada que enviar.
+        self.publicados.clear()
+        crear().reenviar_pendientes()
+        self.assertEqual(self.publicados, [])
 
 
 @unittest.skipIf(Engine is None, "Requiere kafka-python")

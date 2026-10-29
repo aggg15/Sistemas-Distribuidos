@@ -190,6 +190,75 @@ class PruebasCicloDeRiego(unittest.TestCase):
         self.assertEqual([(e["ws_id"], e["estado"]) for e in red],
                          [("WS-01", "REGANDO"), ("WS-02", "DISPONIBLE")])
 
+    def test_riego_denegado_desde_la_estacion_se_le_explica(self):
+        self.registro.avisar_averia("WS-01", self.registro._estaciones["WS-01"].sesion, True)
+        self.gestor.procesar_peticion({"tipo": "SOLICITUD", "peticion_id": "WS-01-1",
+                                       "origen": "WS", "ws_id": "WS-01", "duracion_s": 2})
+        aviso = self.bus.de(TOPIC_ORDENES)[-1]
+        self.assertEqual((aviso["tipo"], aviso["ws_id"]), ("DENEGADO", "WS-01"))
+        self.assertIn("FUGA", aviso["texto"])
+
+    # --- Resiliencia ---------------------------------------------------------
+
+    def test_central_reiniciada_recupera_el_riego_en_curso(self):
+        self.gestor.procesar_peticion(solicitud(duracion_s=4))
+        self.engine.avanzar_segundo()
+        # Reinicio de CENTRAL: memoria vacía, misma BD. El Monitor vuelve a registrarse.
+        self.registro = RegistroConexiones(self.bd)
+        self.assertEqual(self.estado(), "DESCONECTADA")
+        self.registro.registrar("WS-01", "Parque", sesion=object())
+        gestor = GestorRiegos(self.registro, self.bd, self.bus.publicar)
+        self.bus.destinos[TOPIC_EVENTOS_WS] = gestor.procesar_evento
+
+        self.engine.avanzar_segundo()  # la telemetría del Engine lo hace reaparecer
+        self.assertEqual(self.estado(), "REGANDO")
+        self.assertEqual(self.registro.estado()["WS-01"]["riego"]["fo_id"], "FO1")
+        for _ in range(2):
+            self.engine.avanzar_segundo()
+        self.assertEqual(self.bus.de(TOPIC_NOTIFICACIONES)[-1]["tipo"], "RESUMEN")
+        self.assertEqual(self.bd.listar_riegos()[0]["motivo_fin"], "TIEMPO")
+        self.assertEqual(self.estado(), "DISPONIBLE")
+
+    def test_riego_terminado_con_central_caida_se_cierra_al_volver(self):
+        self.gestor.procesar_peticion(solicitud(duracion_s=10))
+        self.engine.avanzar_segundo()
+        # CENTRAL reinicia y lo primero que lee de Kafka es el fin del riego.
+        self.registro = RegistroConexiones(self.bd)
+        gestor = GestorRiegos(self.registro, self.bd, self.bus.publicar)
+        gestor.procesar_evento({"tipo": "RIEGO_FINALIZADO", "ws_id": "WS-01",
+                                "riego_id": 1, "motivo": "MANUAL", "volumen_l": 0.2,
+                                "duracion_s": 1})
+        riego = self.bd.listar_riegos()[0]
+        self.assertEqual((riego["motivo_fin"], riego["volumen_l"]), ("MANUAL", 0.2))
+        resumen = self.bus.de(TOPIC_NOTIFICACIONES)[-1]
+        self.assertEqual((resumen["tipo"], resumen["fo_id"]), ("RESUMEN", "FO1"))
+
+    def test_engine_recuperado_envia_lo_que_rego(self):
+        self.gestor.procesar_peticion(solicitud(duracion_s=10))
+        self.engine.avanzar_segundo()
+        del self.bus.destinos[TOPIC_ORDENES]  # el Engine se ha caído: no recibe PARAR
+        self.gestor.interrumpir("WS-01", "FUGA")  # el Monitor avisó de la avería
+        self.assertAlmostEqual(self.bd.listar_riegos()[0]["volumen_l"], 0.2)
+        fin_central = self.bd.listar_riegos()[0]["fin"]
+
+        self.gestor.procesar_evento({"tipo": "RIEGO_FINALIZADO", "ws_id": "WS-01",
+                                     "riego_id": 1, "motivo": "FUGA", "volumen_l": 0.4,
+                                     "duracion_s": 2, "recuperado": True})
+        riego = self.bd.listar_riegos()[0]
+        self.assertEqual((riego["volumen_l"], riego["duracion_s"]), (0.4, 2))
+        self.assertEqual((riego["motivo_fin"], riego["fin"]), ("FUGA", fin_central))
+        resumen = self.bus.de(TOPIC_NOTIFICACIONES)[-1]
+        self.assertIn("Estado final enviado por la estación", resumen["texto"])
+        self.assertEqual(self.notificaciones().count("RESUMEN"), 2)
+
+    def test_telemetria_de_un_riego_ya_cerrado_no_lo_reabre(self):
+        self.gestor.procesar_peticion(solicitud(duracion_s=10))
+        self.gestor.ordenar("BLOQUEAR", "WS-01")
+        self.gestor.ordenar("ACTIVAR", "WS-01")
+        self.gestor.procesar_evento({"tipo": "TELEMETRIA", "ws_id": "WS-01", "riego_id": 1,
+                                     "caudal_lpm": 12.0, "volumen_l": 0.2, "segundos": 1})
+        self.assertEqual(self.estado(), "DISPONIBLE")
+
     def test_mensajes_raros_no_rompen_nada(self):
         self.gestor.procesar_peticion({"tipo": "OTRA"})
         self.gestor.procesar_peticion(solicitud(duracion_s="x"))

@@ -71,7 +71,9 @@ def crear_manejador(central, eventos):
             if self.path == "/":
                 self._responder(200, PAGINA.read_bytes(), "text/html; charset=utf-8")
             elif self.path == "/api/estado":
-                estaciones = [{"ws_id": ws_id, **datos}
+                totales = central.bd.volumen_por_estacion()
+                estaciones = [{"ws_id": ws_id, **datos,
+                               "volumen_total_l": totales.get(ws_id, 0.0)}
                               for ws_id, datos in sorted(central.registro.estado().items())]
                 self._json(200, {"estaciones": estaciones, "eventos": eventos.ultimos(),
                                  "kafka": central.productor is not None,

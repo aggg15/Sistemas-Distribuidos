@@ -194,10 +194,11 @@
               <th>ID</th><th>Ubicación</th><th>Estado</th>
               <th class="num">Caudal (L/min)</th><th class="num">Vol. acum. (L)</th>
               <th class="num">Tiempo (s)</th><th>Operario</th>
+              <th class="num">Agua total (L)</th>
             </tr>
           </thead>
           <tbody id="filas">
-            <tr class="vacio"><td colspan="7">Sin estaciones registradas.</td></tr>
+            <tr class="vacio"><td colspan="8">Sin estaciones registradas.</td></tr>
           </tbody>
         </table>
       </div>
@@ -276,6 +277,8 @@
       crear("td", "num", r ? r.volumen_l.toFixed(1) : (conectada ? "0.0" : "–")),
       crear("td", "num", r ? String(r.segundos) : "–"),
       crear("td", "", operario(r)),
+      // Riegos ya cerrados más lo que lleva el riego en curso.
+      crear("td", "num", (e.volumen_total_l + (r ? r.volumen_l : 0)).toFixed(1)),
     );
     tr.addEventListener("click", () => {
       seleccionada = e.ws_id;
@@ -314,7 +317,7 @@
     if (ultimas.length === 0) {
       const tr = crear("tr", "vacio");
       const td = crear("td", "", "Sin estaciones registradas.");
-      td.colSpan = 7;
+      td.colSpan = 8;
       tr.append(td);
       tbody.replaceChildren(tr);
     } else {

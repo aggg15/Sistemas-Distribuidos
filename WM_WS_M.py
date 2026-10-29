@@ -160,7 +160,7 @@ def ejecutar(host, puerto_central, ws_id, ubicacion, parada, intervalo=2.0,
                 return 1
         except (OSError, ConexionCerrada, ErrorProtocolo) as error:
             if not parada.is_set():
-                LOG.warning("Se perdió la sesión (%s). Reintento en %.1f s",
+                LOG.warning("Imposible conectar con WM_Central (%s). Reintento en %.1f s",
                             str(error) or "EOT recibido", reintento)
         if not parada.is_set():
             parada.wait(reintento)

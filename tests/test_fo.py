@@ -9,6 +9,7 @@ from unittest.mock import patch
 try:
     import WM_FO
     from WM_FO import Operario, formatear, leer_fichero
+    from common.latido import MENSAJE_CAIDA, LatidoCentral
     from common.topics import TOPIC_ESTADO_RED, TOPIC_NOTIFICACIONES
 except ImportError:  # kafka-python no instalado
     WM_FO = None
@@ -92,6 +93,34 @@ class PruebasSeguimiento(unittest.TestCase):
         self.operario._recibir(TOPIC_ESTADO_RED, {"tipo": "ESTADO_RED",
                                                  "estaciones": estaciones})
         self.assertEqual(self.operario.estaciones, estaciones)
+
+    def test_central_caida_no_se_envia_la_solicitud(self):
+        ahora = [0.0]
+        self.operario.latido = LatidoCentral(reloj=lambda: ahora[0])
+        ahora[0] = 10.0
+        with patch("builtins.print") as imprimir:
+            self.operario.revisar_central()
+        self.assertIn(MENSAJE_CAIDA, imprimir.call_args.args[0])
+        with self.central_responde("RESUMEN"), patch("builtins.print"):
+            self.assertFalse(self.operario.solicitar("WS-04", 5))
+        self.assertEqual(self.enviadas, [])
+        with patch("builtins.print"):
+            # Un ESTADO_RED reciente indica que CENTRAL ha vuelto.
+            self.operario._recibir(TOPIC_ESTADO_RED, {"estaciones": []}, antiguedad_s=0.5)
+        self.assertTrue(self.operario.latido.disponible)
+
+    def test_al_volver_ve_el_resultado_pero_no_la_telemetria_vieja(self):
+        viejo = {"fo_id": "FO1", "ws_id": "WS-04", "peticion_id": "FO1-1", "texto": "fin",
+                 "caudal_lpm": 12.0, "volumen_l": 1.0, "segundos": 5}
+        with patch("builtins.print") as imprimir:
+            self.operario._recibir(TOPIC_NOTIFICACIONES, {**viejo, "tipo": "TELEMETRIA"},
+                                   antiguedad_s=60)
+            imprimir.assert_not_called()
+            self.operario._recibir(TOPIC_NOTIFICACIONES, {**viejo, "tipo": "RESUMEN"},
+                                   antiguedad_s=60)
+        impreso = " ".join(str(a) for llamada in imprimir.call_args_list for a in llamada.args)
+        self.assertIn("mientras estabas desconectado", impreso)
+        self.assertIn("[FIN]", impreso)
 
     def test_formato_de_la_telemetria(self):
         texto = formatear({"tipo": "TELEMETRIA", "ws_id": "WS-04", "caudal_lpm": 12.5,
