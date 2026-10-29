@@ -3,8 +3,9 @@
 import math
 import time
 
-from kafka import KafkaConsumer, KafkaProducer
-from kafka.errors import KafkaTimeoutError
+from kafka import KafkaAdminClient, KafkaConsumer, KafkaProducer, TopicPartition
+from kafka.admin import NewTopic
+from kafka.errors import KafkaTimeoutError, TopicAlreadyExistsError
 from kafka.serializer import DefaultSerializer, JsonSerializer
 
 # Se reexportan para que quien ya importaba los topics desde aquí siga funcionando.
@@ -49,18 +50,55 @@ def enviar(productor, topic, mensaje, clave=None, timeout=10.0):
     return metadata
 
 
-def crear_consumidor(servidor, topics, grupo):
-    """Cada grupo recibe todos los mensajes; dentro de un grupo se reparten.
+def crear_topics(servidor, topics):
+    """Crea los topics que aún no existan (una partición, sin réplicas: hay un
+    solo broker). Así nadie se suscribe a un topic inexistente."""
+    admin = KafkaAdminClient(bootstrap_servers=servidor, request_timeout_ms=5000)
+    try:
+        existentes = set(admin.list_topics())
+        nuevos = [NewTopic(topic, num_partitions=1, replication_factor=1)
+                  for topic in topics if topic not in existentes]
+        if nuevos:
+            try:
+                admin.create_topics(nuevos)
+            except TopicAlreadyExistsError:
+                pass  # otro módulo lo creó a la vez
+    finally:
+        admin.close()
 
-    Por eso cada Engine y cada FO usan su propio grupo: así todos reciben
-    todo y descartan lo que no va dirigido a ellos.
+
+def crear_consumidor(servidor, topics, grupo, confirmacion_manual=False):
+    """Consumidor que lee todas las particiones de esos topics.
+
+    Cada módulo (CENTRAL, cada Engine, cada FO) usa su propio grupo, así que
+    recibe todos los mensajes y descarta los que no van dirigidos a él. Como es
+    el único consumidor de su grupo, se asigna las particiones directamente en
+    lugar de suscribirse: no hay que esperar a que Kafka reparta el grupo, lo
+    que tras una caída tardaría hasta que expirase la sesión del proceso muerto.
+    El grupo sirve para que Kafka guarde hasta dónde se ha leído.
+
+    Con confirmacion_manual, la posición solo se guarda al llamar a commit(),
+    después de procesar los mensajes: si el proceso cae antes, se vuelven a leer.
     """
-    return KafkaConsumer(
-        *topics,
+    crear_topics(servidor, topics)
+    consumidor = KafkaConsumer(
         bootstrap_servers=servidor,
         group_id=grupo,
-        # Al arrancar por primera vez, solo mensajes nuevos: no queremos
+        enable_auto_commit=not confirmacion_manual,
+        # La primera vez que se usa el grupo, solo mensajes nuevos: no queremos
         # ejecutar órdenes antiguas que quedaron en el topic.
         auto_offset_reset="latest",
         value_deserializer=JsonSerializer(),
     )
+    try:
+        particiones = []
+        for topic in topics:
+            numeros = consumidor.partitions_for_topic(topic)
+            if not numeros:
+                raise KafkaTimeoutError(f"Sin metadatos del topic {topic}")
+            particiones += [TopicPartition(topic, numero) for numero in numeros]
+        consumidor.assign(particiones)
+    except BaseException:
+        consumidor.close()
+        raise
+    return consumidor

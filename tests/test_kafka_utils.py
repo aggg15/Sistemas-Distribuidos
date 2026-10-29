@@ -6,7 +6,7 @@ from unittest.mock import Mock, patch
 
 try:
     from kafka.errors import KafkaTimeoutError, TopicAuthorizationFailedError
-    from common.kafka_utils import enviar
+    from common.kafka_utils import crear_consumidor, enviar
 except ModuleNotFoundError as error:
     if error.name != "kafka":
         raise
@@ -55,6 +55,33 @@ class PruebasEnvioKafka(unittest.TestCase):
             with self.subTest(timeout=timeout), self.assertRaises(ValueError):
                 enviar(self.productor, "wm.prueba", {}, timeout=timeout)
         self.productor.send.assert_not_called()
+
+
+@unittest.skipIf(enviar is None, "Instala requirements.txt para probar las utilidades Kafka")
+class PruebasConsumidor(unittest.TestCase):
+    """Sin broker: se sustituyen el cliente de administración y el consumidor."""
+
+    def test_crea_los_topics_que_faltan_y_asigna_todas_las_particiones(self):
+        with patch("common.kafka_utils.KafkaAdminClient") as admin, \
+                patch("common.kafka_utils.KafkaConsumer") as consumidor:
+            admin.return_value.list_topics.return_value = ["wm.a"]
+            consumidor.return_value.partitions_for_topic.side_effect = lambda t: {0}
+            resultado = crear_consumidor("kafka:9092", ["wm.a", "wm.b"], "grupo",
+                                         confirmacion_manual=True)
+        creados = admin.return_value.create_topics.call_args.args[0]
+        self.assertEqual([t.name for t in creados], ["wm.b"])
+        self.assertFalse(consumidor.call_args.kwargs["enable_auto_commit"])
+        asignadas = resultado.assign.call_args.args[0]
+        self.assertEqual([(p.topic, p.partition) for p in asignadas],
+                         [("wm.a", 0), ("wm.b", 0)])
+
+    def test_sin_metadatos_se_cierra_y_avisa(self):
+        with patch("common.kafka_utils.KafkaAdminClient"), \
+                patch("common.kafka_utils.KafkaConsumer") as consumidor:
+            consumidor.return_value.partitions_for_topic.return_value = None
+            with self.assertRaises(KafkaTimeoutError):
+                crear_consumidor("kafka:9092", ["wm.a"], "grupo")
+        consumidor.return_value.close.assert_called_once()
 
 
 if __name__ == "__main__":

@@ -19,6 +19,11 @@ class LatidoCentral:
         self._disponible = None  # None: aún no se sabe
         self._lock = threading.Lock()
 
+    def empezar(self):
+        """Llamar al empezar a escuchar Kafka: el plazo cuenta desde ese momento."""
+        with self._lock:
+            self._ultimo = self.reloj()
+
     def recibido(self):
         """Llamar con cada ESTADO_RED reciente. Devuelve True si CENTRAL acaba de volver."""
         with self._lock:

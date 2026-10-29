@@ -50,6 +50,7 @@ class Riego:
     segundos: int = 0
     volumen_l: float = 0.0
     caudal_lpm: float = 0.0
+    peticion_id: object = None  # solicitud de la que viene; se devuelve a CENTRAL
 
 
 class EstacionSimulada:
@@ -122,8 +123,19 @@ class EstacionSimulada:
         datos = {"riego": asdict(self.riego) if self.riego else None,
                  "pendientes": self._pendientes}
         temporal = self._ruta.with_suffix(".tmp")
-        temporal.write_text(json.dumps(datos), encoding="utf-8")
-        os.replace(temporal, self._ruta)
+        for intento in range(3):
+            try:
+                temporal.write_text(json.dumps(datos), encoding="utf-8")
+                os.replace(temporal, self._ruta)
+                return
+            except OSError as error:
+                # En Windows, el antivirus o el indexador pueden tener el fichero
+                # abierto un instante. Un fallo aquí no debe tumbar el hilo que
+                # llama (riego, conexión con el Monitor...): se avisa y se sigue.
+                if intento == 2:
+                    LOG.warning("No se pudo guardar el estado en %s: %s", self._ruta, error)
+                else:
+                    time.sleep(0.05)
 
     def _recuperar(self):
         """Al conocer el ID: si quedó un riego a medias por una caída, se da por
@@ -189,7 +201,8 @@ class EstacionSimulada:
 
     def _iniciar_riego(self, orden):
         try:
-            riego = Riego(int(orden["riego_id"]), orden.get("fo_id"), int(orden["duracion_s"]))
+            riego = Riego(int(orden["riego_id"]), orden.get("fo_id"), int(orden["duracion_s"]),
+                          peticion_id=orden.get("peticion_id"))
             if riego.duracion_s <= 0:
                 raise ValueError("duración no positiva")
         except (KeyError, TypeError, ValueError):
@@ -240,6 +253,7 @@ class EstacionSimulada:
             self._guardar()  # lo regado no se pierde aunque el Engine caiga ahora
             telemetria = {
                 "tipo": "TELEMETRIA", "ws_id": self.ws_id, "riego_id": riego.riego_id,
+                "peticion_id": riego.peticion_id,
                 "caudal_lpm": round(riego.caudal_lpm, 2),
                 "volumen_l": round(riego.volumen_l, 2), "segundos": riego.segundos,
             }
@@ -269,8 +283,9 @@ class EstacionSimulada:
 
     def _fin(self, riego, motivo, recuperado=False):
         mensaje = {"tipo": "RIEGO_FINALIZADO", "ws_id": self.ws_id,
-                   "riego_id": riego.riego_id, "motivo": motivo,
-                   "volumen_l": round(riego.volumen_l, 2), "duracion_s": riego.segundos}
+                   "riego_id": riego.riego_id, "peticion_id": riego.peticion_id,
+                   "motivo": motivo, "volumen_l": round(riego.volumen_l, 2),
+                   "duracion_s": riego.segundos}
         if recuperado:
             mensaje["recuperado"] = True
         return mensaje
@@ -332,6 +347,7 @@ class Engine:
         self.timeout = timeout
         self.reintento = reintento
         self.parada = threading.Event()
+        self.kafka_listo = threading.Event()
         self.productor = None
         self.estacion = EstacionSimulada(self.publicar, carpeta_datos=carpeta_datos)
 
@@ -364,8 +380,15 @@ class Engine:
             except (OSError, ErrorProtocolo) as error:
                 LOG.warning("Sin conexión con el Monitor (%s). Reintento en %.1f s",
                             error, self.reintento)
+            except Exception:  # noqa: BLE001
+                # Este hilo nunca debe morir: sin él la estación no vuelve a conectar.
+                LOG.exception("Error inesperado con el Monitor. Reintento en %.1f s",
+                              self.reintento)
             if not self.parada.is_set():
-                self.estacion.perder_monitor()
+                try:
+                    self.estacion.perder_monitor()
+                except Exception:  # noqa: BLE001
+                    LOG.exception("Error al cerrar el riego tras perder el Monitor")
             self.parada.wait(self.reintento)
 
     def escuchar_ordenes(self):
@@ -386,6 +409,8 @@ class Engine:
                 self.parada.wait(self.reintento)
                 continue
             LOG.info("Conectado a Kafka en %s", self.servidor_kafka)
+            self.estacion.latido.empezar()
+            self.kafka_listo.set()
             try:
                 while not self.parada.is_set():
                     # poll con plazo para poder comprobar la parada periódicamente.
@@ -417,7 +442,8 @@ class Engine:
             self.estacion.avanzar_segundo()
             if self.productor is not None:
                 self.estacion.reenviar_pendientes()
-            if self.estacion.latido.revisar():
+            # Sin escuchar aún Kafka, no recibir ESTADO_RED no dice nada de CENTRAL.
+            if self.kafka_listo.is_set() and self.estacion.latido.revisar():
                 LOG.warning("%s: no se admiten nuevos riegos (el riego en curso continúa)",
                             MENSAJE_CAIDA)
 

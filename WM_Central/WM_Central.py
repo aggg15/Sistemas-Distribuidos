@@ -251,7 +251,8 @@ class CentralTCP:
                 if self.productor is None:
                     self.productor = crear_productor(self.servidor_kafka)
                 consumidor = crear_consumidor(self.servidor_kafka,
-                                              [TOPIC_PETICIONES, TOPIC_EVENTOS_WS], "central")
+                                              [TOPIC_PETICIONES, TOPIC_EVENTOS_WS], "central",
+                                              confirmacion_manual=True)
             except (KafkaError, OSError) as error:
                 LOG.warning("Kafka no disponible (%s). Reintento en 2 s", error)
                 self.parada.wait(2)
@@ -259,9 +260,14 @@ class CentralTCP:
             LOG.info("Conectado a Kafka en %s", self.servidor_kafka)
             try:
                 while not self.parada.is_set():
-                    for registros in consumidor.poll(timeout_ms=500).values():
+                    lotes = consumidor.poll(timeout_ms=500)
+                    for registros in lotes.values():
                         for registro in registros:
                             self._procesar_registro_kafka(registro)
+                    if lotes:
+                        # Se marca como leído solo lo ya procesado: si CENTRAL
+                        # cae antes, al volver se relee (no se pierde nada).
+                        consumidor.commit()
             except (KafkaError, OSError, ValueError) as error:
                 LOG.warning("Error leyendo de Kafka: %s", error)
             finally:

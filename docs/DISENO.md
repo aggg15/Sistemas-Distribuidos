@@ -332,3 +332,16 @@ Si Kafka no confirma un `RIEGO_FINALIZADO`, el Engine lo guarda como pendiente
 (también en disco) y lo reenvía cada segundo hasta que se entrega. Las órdenes
 `INICIAR_RIEGO` con más de 5 s en Kafka se ignoran: CENTRAL ya las canceló por
 falta de respuesta.
+
+**Consumo de Kafka.** Cada módulo usa su propio grupo (`central`,
+`engine-<WS>`, `fo-<id>`) y es su único consumidor, así que no se suscribe: se
+asigna directamente todas las particiones (`crear_consumidor` en
+`common/kafka_utils.py`). Con suscripción, un proceso que vuelve tras una caída
+esperaba más de 10 s a que Kafka diera por muerta la sesión anterior y le
+repartiera el grupo, y perdía las órdenes de ese intervalo. El grupo solo guarda
+hasta dónde se ha leído. Los topics se crean al conectar si no existen.
+CENTRAL confirma la lectura (`commit`) después de procesar cada lote: si cae a
+mitad, al volver relee lo pendiente.
+
+Comprobado el 29 de octubre de 2026 con Kafka 3.9.1 real: riego completo,
+denegación de una WS inexistente y las cuatro caídas de la tabla anterior.

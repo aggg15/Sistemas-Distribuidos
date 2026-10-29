@@ -53,7 +53,7 @@ def leer_fichero(ruta):
             except ValueError:
                 raise ValueError(f"Línea {numero} no válida: {linea!r} "
                                  "(formato ws_id;segundos)") from None
-            peticiones.append((ws_id, duracion_s))
+            peticiones.append((ws_id.upper(), duracion_s))
     return peticiones
 
 
@@ -105,6 +105,7 @@ class Operario:
                         for particion in consumidor.assignment():
                             consumidor.position(particion)
                         LOG.info("Conectado a Kafka en %s", self.servidor_kafka)
+                        self.latido.empezar()
                         self.listo.set()
                     for registros in lotes.values():
                         for registro in registros:
@@ -133,9 +134,8 @@ class Operario:
         elif mensaje.get("fo_id") == self.fo_id:
             if mensaje.get("tipo") == "TELEMETRIA" and antiguedad_s > PLAZO_S:
                 return  # telemetría atrasada de mientras el FO estaba cerrado
-            if antiguedad_s > PLAZO_S:
-                print("(mientras estabas desconectado) ", end="")
-            print(formatear(mensaje), flush=True)
+            previo = "(mientras estabas desconectado) " if antiguedad_s > PLAZO_S else ""
+            print(previo + formatear(mensaje), flush=True)
             if mensaje.get("peticion_id") == self._en_curso:
                 self._eventos.put(mensaje)
 
@@ -163,6 +163,10 @@ class Operario:
                 try:
                     evento = self._eventos.get(timeout=SILENCIO_MAXIMO_S)
                 except queue.Empty:
+                    if not self.latido.disponible:
+                        # CENTRAL caída: el riego sigue en la estación y el
+                        # resultado llegará cuando CENTRAL vuelva.
+                        continue
                     print(f"[ NO] {MENSAJE_CAIDA} ({SILENCIO_MAXIMO_S:.0f} s sin noticias "
                           "de la solicitud)")
                     return False
@@ -209,7 +213,8 @@ def menu(operario):
         if opcion == "1":
             operario.mostrar_estaciones()
         elif opcion == "2":
-            ws_id = input("ID de la estación: ").strip()
+            # Los IDs de estación se usan siempre en mayúsculas (ws-04 = WS-04).
+            ws_id = input("ID de la estación: ").strip().upper()
             try:
                 duracion_s = int(input("Duración en segundos: "))
                 if not campo_valido(ws_id) or duracion_s <= 0:

@@ -196,6 +196,8 @@ def main(argv=None):
         parser.error("Indica el host y puerto de CENTRAL por argumentos o variables de entorno")
     if not campo_valido(args.ws_id or "") or not campo_valido(args.ubicacion or ""):
         parser.error("ID y ubicación obligatorios, sin #, controles ni espacios en los extremos")
+    # Los IDs de estación se usan siempre en mayúsculas (ws-04 = WS-04).
+    args.ws_id = args.ws_id.upper()
     try:
         empaquetar(f"REGISTRO#{args.ws_id}#{args.ubicacion}")
     except ValueError as error:

@@ -130,6 +130,9 @@ class GestorRiegos:
             enviada = self.publicar(TOPIC_ORDENES, {
                 "tipo": "INICIAR_RIEGO", "ws_id": ws_id, "riego_id": riego.riego_id,
                 "fo_id": fo_id, "duracion_s": duracion_s,
+                # El Engine lo devuelve en sus eventos: si CENTRAL se reinicia,
+                # así sabe a qué solicitud del operario corresponde el riego.
+                "peticion_id": peticion_id,
             }, ws_id)
             if not enviada:
                 self._terminar(riego, None, texto="No se pudo enviar la orden a la estación")
@@ -185,7 +188,8 @@ class GestorRiegos:
     def _recuperar(self, fila, telemetria):
         """CENTRAL se reinició con un riego abierto en la BD y la estación sigue
         regando: se vuelve a seguir ese riego."""
-        riego = RiegoEnCurso(fila["ws_id"], fila["origen"], fila["fo_id"], None, 0,
+        riego = RiegoEnCurso(fila["ws_id"], fila["origen"], fila["fo_id"],
+                             telemetria.get("peticion_id"), 0,
                              limite=0, riego_id=fila["id"], activo=True)
         if self.registro.reservar(fila["ws_id"], riego) is not None:
             return  # p. ej. el Monitor aún no ha vuelto a conectar: se reintenta con la próxima
@@ -206,8 +210,8 @@ class GestorRiegos:
         if not (abierto or evento.get("recuperado")):
             LOG.debug("Riego %s: datos definitivos del Engine guardados", fila["id"])
             return
-        datos = {"fo_id": fila["fo_id"], "peticion_id": None, "ws_id": fila["ws_id"],
-                 "origen": fila["origen"]}
+        datos = {"fo_id": fila["fo_id"], "peticion_id": evento.get("peticion_id"),
+                 "ws_id": fila["ws_id"], "origen": fila["origen"]}
         self._avisar(datos, "RESUMEN",
                      f"Estado final enviado por la estación (riego {fila['id']}, {motivo}): "
                      f"{volumen_l:.2f} L en {duracion_s} s",
