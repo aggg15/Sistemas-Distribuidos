@@ -7,10 +7,11 @@ RUN mkdir -p /app/data
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 COPY common/ ./common/
-COPY WM_Central.py WM_WS_M.py gestor_riegos.py panel_web.py ./
-COPY panel/ ./panel/
+COPY WM_Central/ ./WM_Central/
+# El Monitor solo se usa en la prueba opcional de docker-compose (perfil demo).
+COPY WM_WS/WM_WS_M.py ./WM_WS/WM_WS_M.py
 COPY scripts/gestionar_bd.py ./scripts/gestionar_bd.py
 
 # 9999: sockets de los Monitores. 8080: panel web.
 EXPOSE 9999 8080
-CMD ["python", "WM_Central.py"]
+CMD ["python", "WM_Central/WM_Central.py"]

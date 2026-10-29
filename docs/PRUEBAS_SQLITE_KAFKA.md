@@ -80,13 +80,13 @@ conserva el operario válido de P03.
 En A:
 
 ```bash
-.venv/bin/python WM_Central.py 10099 --db data/pruebas-actualizacion/wm.db --verbose
+.venv/bin/python WM_Central/WM_Central.py 10099 --db data/pruebas-actualizacion/wm.db --verbose
 ```
 
 En B:
 
 ```bash
-.venv/bin/python WM_WS_M.py localhost 10099 WS-TEST-01 "Jardín de pruebas"
+.venv/bin/python WM_WS/WM_WS_M.py localhost 10099 WS-TEST-01 "Jardín de pruebas"
 ```
 
 En C:
@@ -116,7 +116,7 @@ cambio estacional. Consultar conserva los valores UTC originales de SQLite.
 Dejar A y B funcionando. En C:
 
 ```bash
-.venv/bin/python WM_WS_M.py localhost 10099 WS-TEST-01 "Ubicación que no debe guardarse"
+.venv/bin/python WM_WS/WM_WS_M.py localhost 10099 WS-TEST-01 "Ubicación que no debe guardarse"
 echo $?
 .venv/bin/python scripts/gestionar_bd.py --db data/pruebas-actualizacion/wm.db estaciones
 ```
@@ -145,7 +145,7 @@ presenta como conectada ni disponible por el mero hecho de existir en SQLite.
 Con A funcionando, arrancar en B:
 
 ```bash
-.venv/bin/python WM_WS_M.py localhost 10099 WS-TEST-01 "Parque actualizado"
+.venv/bin/python WM_WS/WM_WS_M.py localhost 10099 WS-TEST-01 "Parque actualizado"
 ```
 
 Consultar en C:
@@ -174,7 +174,7 @@ La carpeta `data/pruebas-actualizacion` ya existe por P02. Usarla como si fuera
 un fichero en C:
 
 ```bash
-.venv/bin/python WM_Central.py 10100 --db data/pruebas-actualizacion
+.venv/bin/python WM_Central/WM_Central.py 10100 --db data/pruebas-actualizacion
 echo $?
 ```
 

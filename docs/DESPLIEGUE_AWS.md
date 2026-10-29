@@ -164,9 +164,9 @@ En cada PC del laboratorio, con el repositorio clonado y las dependencias
 instaladas (`pip install -r requirements.txt`):
 
 ```bash
-python3 WM_WS_M.py IP_AWS 9999 WS-04 "River Park" --puerto-engine 9100
-python3 WM_WS_E.py IP_AWS:9092 localhost 9100
-python3 WM_FO.py IP_AWS:9092 FO1 --fichero peticiones_ejemplo.txt
+python3 WM_WS/WM_WS_M.py IP_AWS 9999 WS-04 "River Park" --puerto-engine 9100
+python3 WM_WS/WM_WS_E.py IP_AWS:9092 localhost 9100
+python3 WM_FO/WM_FO.py IP_AWS:9092 FO1 --fichero WM_FO/peticiones_ejemplo.txt
 ```
 
 Monitor y Engine de una misma estación van en el mismo PC (se hablan por

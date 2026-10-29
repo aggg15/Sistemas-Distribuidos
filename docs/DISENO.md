@@ -14,15 +14,15 @@ desconectadas y prepara la tabla de riegos. Su contrato está en
 [PERSISTENCIA.md](PERSISTENCIA.md). Engine, FO, el ciclo de riego y el panel
 siguen pendientes.
 
-Actualización (28 de octubre de 2026): `WM_WS_E.py` implementa el Engine (ID y
+Actualización (28 de octubre de 2026): `WM_WS/WM_WS_E.py` implementa el Engine (ID y
 CHECK con el Monitor, órdenes de Kafka, telemetría y menú) y el Monitor vigila
 su salud con `--puerto-engine`, avisando a CENTRAL con `AVERIA` y `RESUELTA`.
 El despliegue en la nube pasa a hacerse en **AWS** en lugar de Railway.
 
 Actualización (28 de octubre de 2026, 2): CENTRAL consume Kafka y gestiona el
-ciclo de riego completo en `gestor_riegos.py` (solicitudes, autorización,
+ciclo de riego completo en `WM_Central/gestor_riegos.py` (solicitudes, autorización,
 telemetría, resumen, cortes por avería, desconexión o bloqueo, y órdenes sobre
-una estación o todas). `WM_FO.py` implementa la aplicación del operario. El
+una estación o todas). `WM_FO/WM_FO.py` implementa la aplicación del operario. El
 panel web (apartado 6) muestra el estado y da acceso a las órdenes de CENTRAL.
 
 Actualización (29 de octubre de 2026): resiliencia según la guía de corrección
@@ -254,8 +254,8 @@ CREATE TABLE riegos (
 ## 6. Panel de CENTRAL
 
 CENTRAL se despliega en la nube (AWS), donde no hay una terminal interactiva. Por eso
-el panel es **web**, servido por la propia CENTRAL (`panel_web.py` y
-`panel/index.html`). Se usa el servidor HTTP de la biblioteca estándar
+el panel es **web**, servido por la propia CENTRAL (`WM_Central/panel_web.py` y
+`WM_Central/panel/index.html`). Se usa el servidor HTTP de la biblioteca estándar
 (`http.server`) en lugar de Flask: basta para dos rutas y no añade dependencias.
 
 - La página consulta `GET /api/estado` cada segundo y muestra una tarjeta por

@@ -33,7 +33,7 @@ escritura. Las consultas usan parámetros SQL. No se escribe por cada PING.
 Desde la raíz del repositorio:
 
 ```bash
-.venv/bin/python WM_Central.py 9999 --db data/wm.db --verbose
+.venv/bin/python WM_Central/WM_Central.py 9999 --db data/wm.db --verbose
 ```
 
 La prioridad de configuración es `--db`, variable `WM_DB_PATH` y ruta por defecto
@@ -69,7 +69,7 @@ la fecha de cada PING. La conexión actual no se guarda en SQLite. El historial 
 2. En otra terminal, ejecutar:
 
    ```bash
-   .venv/bin/python WM_WS_M.py localhost 9999 WS-04 "River Park"
+   .venv/bin/python WM_WS/WM_WS_M.py localhost 9999 WS-04 "River Park"
    ```
 
 3. Consultar `estaciones` con el script y comprobar su ID y ubicación.

@@ -17,16 +17,21 @@ from pathlib import Path
 import random
 import signal
 import socket
+import sys
 import threading
 import time
 
 from kafka.errors import KafkaError
 
-from common.configuracion import positivo, puerto
-from common.kafka_utils import (TOPIC_ESTADO_RED, TOPIC_EVENTOS_WS, TOPIC_ORDENES,
-                                TOPIC_PETICIONES, crear_consumidor, crear_productor, enviar)
-from common.latido import MENSAJE_CAIDA, PLAZO_S, LatidoCentral
-from common.protocolo import Canal, ConexionCerrada, ErrorProtocolo
+# Permite importar "common" (en la raíz del repositorio) se lance desde donde se lance.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from common.configuracion import positivo, puerto  # noqa: E402
+from common.kafka_utils import (  # noqa: E402
+    TOPIC_ESTADO_RED, TOPIC_EVENTOS_WS, TOPIC_ORDENES, TOPIC_PETICIONES,
+    crear_consumidor, crear_productor, enviar)
+from common.latido import MENSAJE_CAIDA, PLAZO_S, LatidoCentral  # noqa: E402
+from common.protocolo import Canal, ConexionCerrada, ErrorProtocolo  # noqa: E402
 
 LOG = logging.getLogger("WM_WS_E")
 

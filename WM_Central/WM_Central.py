@@ -4,18 +4,23 @@ import argparse
 from dataclasses import dataclass
 import logging
 import os
+from pathlib import Path
 import signal
 import socket
 import sqlite3
+import sys
 import threading
 import time
 
-from common.base_datos import BaseDatos, RUTA_BD
-from common.configuracion import campo_valido, entero_positivo, positivo, puerto
-from common.protocolo import Canal, ConexionCerrada, ErrorProtocolo, NACK
-from common.topics import TOPIC_EVENTOS_WS, TOPIC_PETICIONES
-from gestor_riegos import GestorRiegos
-from panel_web import RegistroEventos, crear_panel
+# Permite importar "common" (en la raíz del repositorio) se lance desde donde se lance.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from common.base_datos import BaseDatos, RUTA_BD  # noqa: E402
+from common.configuracion import campo_valido, entero_positivo, positivo, puerto  # noqa: E402
+from common.protocolo import Canal, ConexionCerrada, ErrorProtocolo, NACK  # noqa: E402
+from common.topics import TOPIC_EVENTOS_WS, TOPIC_PETICIONES  # noqa: E402
+from gestor_riegos import GestorRiegos  # noqa: E402
+from panel_web import RegistroEventos, crear_panel  # noqa: E402
 
 LOG = logging.getLogger("WM_Central")
 

@@ -2,7 +2,7 @@
 
 Estado: enlace TCP CENTRAL–Monitor implementado, con estaciones persistentes en SQLite. El anexo de sockets original
 se conserva en `anexo-sockets/`; los programas que se amplían para la práctica
-son `WM_Central.py` y `WM_WS_M.py`, en la raíz.
+son `WM_Central/WM_Central.py` y `WM_WS/WM_WS_M.py`.
 
 ## 1. Qué se puede ejecutar
 
@@ -10,13 +10,13 @@ Solo se necesita Python 3.9 o posterior para esta fase. Desde la raíz:
 
 ```bash
 # Terminal 1
-python3 WM_Central.py 9999 --verbose
+python3 WM_Central/WM_Central.py 9999 --verbose
 
 # Terminal 2
-python3 WM_WS_M.py localhost 9999 WS-04 "River Park"
+python3 WM_WS/WM_WS_M.py localhost 9999 WS-04 "River Park"
 
 # Terminal 3, otra estación
-python3 WM_WS_M.py localhost 9999 WS-05 "Jardín Botánico"
+python3 WM_WS/WM_WS_M.py localhost 9999 WS-05 "Jardín Botánico"
 ```
 
 El monitor confirma el registro y después muestra un latido confirmado cada dos

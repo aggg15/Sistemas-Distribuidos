@@ -3,13 +3,18 @@
 import argparse
 import logging
 import os
+from pathlib import Path
 import signal
 import socket
+import sys
 import threading
 import time
 
-from common.configuracion import campo_valido, positivo, puerto
-from common.protocolo import Canal, ConexionCerrada, ErrorProtocolo, empaquetar
+# Permite importar "common" (en la raíz del repositorio) se lance desde donde se lance.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from common.configuracion import campo_valido, positivo, puerto  # noqa: E402
+from common.protocolo import Canal, ConexionCerrada, ErrorProtocolo, empaquetar  # noqa: E402
 
 LOG = logging.getLogger("WM_WS_M")
 

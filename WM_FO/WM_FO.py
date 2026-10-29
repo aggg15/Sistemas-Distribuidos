@@ -8,17 +8,23 @@ de una en una: tras terminar cada una (con éxito o no) se esperan 4 segundos.
 import argparse
 import logging
 import os
+from pathlib import Path
 import queue
 import signal
+import sys
 import threading
 import time
 
 from kafka.errors import KafkaError
 
-from common.configuracion import campo_valido, positivo
-from common.kafka_utils import (TOPIC_ESTADO_RED, TOPIC_NOTIFICACIONES, TOPIC_PETICIONES,
-                                crear_consumidor, crear_productor, enviar)
-from common.latido import MENSAJE_CAIDA, PLAZO_S, LatidoCentral
+# Permite importar "common" (en la raíz del repositorio) se lance desde donde se lance.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from common.configuracion import campo_valido, positivo  # noqa: E402
+from common.kafka_utils import (  # noqa: E402
+    TOPIC_ESTADO_RED, TOPIC_NOTIFICACIONES, TOPIC_PETICIONES,
+    crear_consumidor, crear_productor, enviar)
+from common.latido import MENSAJE_CAIDA, PLAZO_S, LatidoCentral  # noqa: E402
 
 LOG = logging.getLogger("WM_FO")
 

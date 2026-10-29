@@ -35,7 +35,7 @@ services:
   monitor:
     profiles: [demo]
     build: .
-    command: ["python", "WM_WS_M.py"]
+    command: ["python", "WM_WS/WM_WS_M.py"]
     depends_on: [central]
     environment:
       WM_CENTRAL_HOST: central
