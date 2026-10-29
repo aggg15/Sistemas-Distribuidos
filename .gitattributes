@@ -1,3 +1,6 @@
 # Los scripts de shell deben tener saltos de línea de Linux aunque se editen en
 # Windows; con CRLF, bash falla en la instancia de AWS.
 *.sh text eol=lf
+
+# Los .bat solo funcionan bien en Windows con saltos de línea CRLF.
+*.bat text eol=crlf
