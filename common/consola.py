@@ -23,6 +23,7 @@ NOMBRE_NIVEL = {logging.WARNING: "AVISO", logging.ERROR: "ERROR",
 
 _lock = threading.Lock()
 _pregunta = None  # texto de la pregunta mientras se espera lo que escribe el usuario
+_tecleado = ""    # lo que el usuario lleva escrito: se repinta junto a la pregunta
 _color = False
 
 
@@ -59,24 +60,82 @@ def escribir(texto="", color=None):
             sys.stdout.write(texto + "\n")
         else:
             # Con color se borra la línea de la pregunta (\r y \x1b[2K); sin él
-            # (salida a un fichero) basta con saltar de línea.
+            # (salida a un fichero) basta con saltar de línea. Después se vuelve
+            # a pintar la pregunta con lo que el usuario llevaba escrito.
             inicio = "\r\x1b[2K" if _color else "\n"
-            sys.stdout.write(f"{inicio}{texto}\n{_pregunta}")
+            sys.stdout.write(f"{inicio}{texto}\n{_pregunta}{_tecleado}")
         sys.stdout.flush()
+
+
+def _teclas_windows():
+    import msvcrt
+    while True:
+        tecla = msvcrt.getwch()
+        if tecla in ("\x00", "\xe0"):
+            msvcrt.getwch()  # flechas y teclas de función: se ignoran
+            continue
+        yield tecla
+
+
+def _teclas_linux():
+    import termios
+    import tty
+    descriptor = sys.stdin.fileno()
+    anterior = termios.tcgetattr(descriptor)
+    # cbreak: cada tecla llega al momento y sin eco; Ctrl+C sigue funcionando.
+    tty.setcbreak(descriptor)
+    try:
+        while True:
+            yield sys.stdin.read(1)
+    finally:
+        termios.tcsetattr(descriptor, termios.TCSADRAIN, anterior)
+
+
+def _leer_linea():
+    """Lee una línea tecla a tecla guardando lo escrito en _tecleado, para que
+    escribir() pueda volver a mostrarlo si llega un mensaje mientras tanto."""
+    global _tecleado
+    teclas = _teclas_windows() if os.name == "nt" else _teclas_linux()
+    try:
+        for tecla in teclas:
+            if tecla == "\x03":
+                raise KeyboardInterrupt
+            if tecla in ("\x04", "\x1a", "") and not _tecleado:
+                raise EOFError  # Ctrl+D / Ctrl+Z
+            with _lock:
+                if tecla in ("\r", "\n"):
+                    sys.stdout.write("\n")
+                    sys.stdout.flush()
+                    return _tecleado
+                if tecla in ("\x08", "\x7f"):  # borrar
+                    if _tecleado:
+                        _tecleado = _tecleado[:-1]
+                        sys.stdout.write("\b \b")
+                elif tecla.isprintable():
+                    _tecleado += tecla
+                    sys.stdout.write(tecla)
+                sys.stdout.flush()
+        raise EOFError
+    finally:
+        teclas.close()
 
 
 def preguntar(texto):
-    """input() que los mensajes de otros hilos no tapan."""
-    global _pregunta
+    """input() que los mensajes de otros hilos no tapan ni borran."""
+    global _pregunta, _tecleado
     with _lock:
         _pregunta = texto
+        _tecleado = ""
         sys.stdout.write(texto)
         sys.stdout.flush()
     try:
-        return input()
+        if sys.stdin.isatty() and sys.stdout.isatty():
+            return _leer_linea()
+        return input()  # sin teclado (pruebas, Docker): lectura normal
     finally:
         with _lock:
             _pregunta = None
+            _tecleado = ""
 
 
 class FormatoConsola(logging.Formatter):
