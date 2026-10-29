@@ -205,7 +205,7 @@ class PruebasMonitor(unittest.TestCase):
         intentos = []
 
         def sesion(conexion, ws_id, ubicacion, parada, intervalo, timeout, confirmado,
-                   salud=None):
+                   salud=None, al_registrar=None):
             intentos.append(None)
             if len(intentos) == 1:
                 confirmado.set()

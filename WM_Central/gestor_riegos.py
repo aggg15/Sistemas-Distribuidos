@@ -19,6 +19,8 @@ import time
 from common.topics import TOPIC_ESTADO_RED, TOPIC_NOTIFICACIONES, TOPIC_ORDENES
 
 LOG = logging.getLogger("WM_Central")
+# Color en la consola de CENTRAL (common/consola.py) de cada paso del riego.
+COLOR_AVISO = {"AUTORIZADO": "verde", "RESUMEN": "cian"}
 
 PLAZO_AUTORIZACION_S = 5.0   # tiempo que se espera a que el Engine abra la válvula
 CADUCIDAD_SOLICITUD_S = 30.0  # solicitudes más antiguas no se atienden
@@ -63,7 +65,8 @@ class GestorRiegos:
                      "ws_id": datos.ws_id, "origen": datos.origen}
         nivel = logging.WARNING if tipo == "DENEGADO" else logging.INFO
         if tipo != "TELEMETRIA":
-            LOG.log(nivel, "[%s] %s: %s", datos["ws_id"], tipo, texto)
+            LOG.log(nivel, "[%s] %s: %s", datos["ws_id"], tipo, texto,
+                    extra={"color": COLOR_AVISO.get(tipo)})
         if datos.get("fo_id") is None:
             if tipo == "DENEGADO" and datos.get("origen") == "WS":
                 # Riego pedido desde el menú de la estación: se le explica el motivo.

@@ -20,7 +20,9 @@ from kafka.errors import KafkaError
 # Permite importar "common" (en la raíz del repositorio) se lance desde donde se lance.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from common import consola  # noqa: E402
 from common.configuracion import campo_valido, positivo  # noqa: E402
+from common.consola import escribir  # noqa: E402
 from common.kafka_utils import (  # noqa: E402
     TOPIC_ESTADO_RED, TOPIC_NOTIFICACIONES, TOPIC_PETICIONES,
     crear_consumidor, crear_productor, enviar)
@@ -35,6 +37,9 @@ SILENCIO_MAXIMO_S = 10.0
 FINALES = ("DENEGADO", "RESUMEN")
 MARCAS = {"PASO": "[...]", "AUTORIZADO": "[ OK]", "DENEGADO": "[ NO]",
           "RESUMEN": "[FIN]"}
+COLOR_TIPO = {"AUTORIZADO": "verde", "DENEGADO": "rojo", "RESUMEN": "cian"}
+COLOR_ESTADO = {"DISPONIBLE": "verde", "REGANDO": "verde", "FUGA": "rojo",
+                "FUERA_SERVICIO": "amarillo", "DESCONECTADA": "gris"}
 
 
 def leer_fichero(ruta):
@@ -121,7 +126,7 @@ class Operario:
 
     def revisar_central(self):
         if self.latido.revisar():
-            print(f"[ NO] {MENSAJE_CAIDA}: no se pueden solicitar riegos", flush=True)
+            escribir(f"[ NO] {MENSAJE_CAIDA}: no se pueden solicitar riegos", "rojo")
 
     def _recibir(self, topic, mensaje, antiguedad_s=0.0):
         if not isinstance(mensaje, dict):
@@ -130,12 +135,12 @@ class Operario:
             self.estaciones = mensaje.get("estaciones", [])
             # Un ESTADO_RED antiguo (leído al volver) no dice nada de CENTRAL ahora.
             if antiguedad_s < PLAZO_S and self.latido.recibido():
-                print("[ OK] WM_Central disponible de nuevo", flush=True)
+                escribir("[ OK] WM_Central disponible de nuevo", "verde")
         elif mensaje.get("fo_id") == self.fo_id:
             if mensaje.get("tipo") == "TELEMETRIA" and antiguedad_s > PLAZO_S:
                 return  # telemetría atrasada de mientras el FO estaba cerrado
             previo = "(mientras estabas desconectado) " if antiguedad_s > PLAZO_S else ""
-            print(previo + formatear(mensaje), flush=True)
+            escribir(previo + formatear(mensaje), COLOR_TIPO.get(mensaje.get("tipo")))
             if mensaje.get("peticion_id") == self._en_curso:
                 self._eventos.put(mensaje)
 
@@ -144,19 +149,20 @@ class Operario:
     def solicitar(self, ws_id, duracion_s):
         """Pide un riego y espera a que termine. Devuelve True si llegó a regar."""
         if not self.latido.disponible:
-            print(f"[ NO] {MENSAJE_CAIDA}: inténtalo cuando vuelva")
+            escribir(f"[ NO] {MENSAJE_CAIDA}: inténtalo cuando vuelva", "rojo")
             return False
         peticion_id = f"{self.fo_id}-{int(time.time() * 1000)}"
         self._eventos = queue.Queue()
         self._en_curso = peticion_id
-        print(f"\nSolicitando riego en {ws_id} durante {duracion_s} s ({peticion_id})")
+        escribir(f"\nSolicitando riego en {ws_id} durante {duracion_s} s ({peticion_id})",
+                 "negrita")
         try:
             enviar(self.productor, TOPIC_PETICIONES, {
                 "tipo": "SOLICITUD", "peticion_id": peticion_id, "origen": "FO",
                 "fo_id": self.fo_id, "ws_id": ws_id, "duracion_s": duracion_s,
             }, clave=self.fo_id)
         except (KafkaError, OSError) as error:
-            print(f"[ NO] No se pudo enviar la solicitud: {error}")
+            escribir(f"[ NO] No se pudo enviar la solicitud: {error}", "rojo")
             return False
         try:
             while True:
@@ -167,8 +173,8 @@ class Operario:
                         # CENTRAL caída: el riego sigue en la estación y el
                         # resultado llegará cuando CENTRAL vuelva.
                         continue
-                    print(f"[ NO] {MENSAJE_CAIDA} ({SILENCIO_MAXIMO_S:.0f} s sin noticias "
-                          "de la solicitud)")
+                    escribir(f"[ NO] {MENSAJE_CAIDA} ({SILENCIO_MAXIMO_S:.0f} s sin noticias "
+                             "de la solicitud)", "rojo")
                     return False
                 if evento["tipo"] in FINALES:
                     return evento["tipo"] == "RESUMEN"
@@ -177,30 +183,29 @@ class Operario:
 
     def ejecutar_fichero(self, ruta):
         peticiones = leer_fichero(ruta)
-        print(f"{len(peticiones)} peticiones en {ruta}")
+        escribir(f"{len(peticiones)} peticiones en {ruta}")
         resultados = []
         for indice, (ws_id, duracion_s) in enumerate(peticiones):
             resultados.append(self.solicitar(ws_id, duracion_s))
             if indice < len(peticiones) - 1:
-                print(f"Esperando {ESPERA_ENTRE_PETICIONES_S:.0f} s para la siguiente...")
+                escribir(f"Esperando {ESPERA_ENTRE_PETICIONES_S:.0f} s para la siguiente...")
                 time.sleep(ESPERA_ENTRE_PETICIONES_S)
-        print(f"Fichero terminado: {sum(resultados)} de {len(resultados)} riegos realizados")
+        escribir(f"Fichero terminado: {sum(resultados)} de {len(resultados)} riegos realizados",
+                 "negrita")
         return resultados
 
     def mostrar_estaciones(self):
         if not self.estaciones:
-            print("Aún no se ha recibido el estado de la red desde CENTRAL")
+            escribir("Aún no se ha recibido el estado de la red desde CENTRAL", "amarillo")
             return
-        print(f"\n{'ESTACIÓN':<10} {'UBICACIÓN':<25} ESTADO")
+        escribir(f"\n{'ESTACIÓN':<10} {'UBICACIÓN':<25} ESTADO", "negrita")
         for estacion in self.estaciones:
             marca = "  <- disponible" if estacion["estado"] == "DISPONIBLE" else ""
-            print(f"{estacion['ws_id']:<10} {estacion['ubicacion']:<25} "
-                  f"{estacion['estado']}{marca}")
+            escribir(f"{estacion['ws_id']:<10} {estacion['ubicacion']:<25} "
+                     f"{estacion['estado']}{marca}", COLOR_ESTADO.get(estacion["estado"]))
 
 
-MENU = """
---- WM_FO ({fo_id}) ---
-1. Ver estaciones
+MENU = """1. Ver estaciones
 2. Solicitar riego
 3. Ejecutar peticiones de un fichero
 0. Salir"""
@@ -208,30 +213,31 @@ MENU = """
 
 def menu(operario):
     while True:
-        print(MENU.format(fo_id=operario.fo_id))
-        opcion = input("Opción: ").strip()
+        escribir(f"\n--- WM_FO | Operario {operario.fo_id} ---", "negrita")
+        escribir(MENU)
+        opcion = consola.preguntar("Opción: ").strip()
         if opcion == "1":
             operario.mostrar_estaciones()
         elif opcion == "2":
             # Los IDs de estación se usan siempre en mayúsculas (ws-04 = WS-04).
-            ws_id = input("ID de la estación: ").strip().upper()
+            ws_id = consola.preguntar("ID de la estación: ").strip().upper()
             try:
-                duracion_s = int(input("Duración en segundos: "))
+                duracion_s = int(consola.preguntar("Duración en segundos: "))
                 if not campo_valido(ws_id) or duracion_s <= 0:
                     raise ValueError
             except ValueError:
-                print("Datos no válidos")
+                escribir("Datos no válidos", "amarillo")
                 continue
             operario.solicitar(ws_id, duracion_s)
         elif opcion == "3":
             try:
-                operario.ejecutar_fichero(input("Ruta del fichero: ").strip())
+                operario.ejecutar_fichero(consola.preguntar("Ruta del fichero: ").strip())
             except (OSError, ValueError) as error:
-                print(f"No se puede usar el fichero: {error}")
+                escribir(f"No se puede usar el fichero: {error}", "rojo")
         elif opcion == "0":
             return
-        else:
-            print("Opción no válida")
+        elif opcion:
+            escribir("Opción no válida", "amarillo")
 
 
 def interrumpir(*_):
@@ -256,15 +262,14 @@ def main(argv=None):
             leer_fichero(args.fichero)  # se valida antes de conectar
         except (OSError, ValueError) as error:
             parser.error(f"Fichero de peticiones: {error}")
-    logging.basicConfig(level=logging.INFO,
-                        format="%(asctime)s %(levelname)s %(name)s: %(message)s")
-    logging.getLogger("kafka").setLevel(logging.WARNING)
+    consola.configurar()
+    escribir(f"WM_FO · Operario {args.fo_id} (Kafka en {args.kafka})", "negrita")
 
     operario = Operario(args.kafka, args.fo_id)
     signal.signal(signal.SIGTERM, interrumpir)
     threading.Thread(target=operario.escuchar, daemon=True).start()
     try:
-        print(f"Conectando con Kafka en {args.kafka}...")
+        escribir("Conectando con Kafka...")
         if not operario.listo.wait(args.espera_kafka):
             parser.exit(1, "No se pudo conectar con Kafka\n")
         if args.fichero:

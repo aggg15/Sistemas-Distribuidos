@@ -13,6 +13,7 @@ import time
 # Permite importar "common" (en la raíz del repositorio) se lance desde donde se lance.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from common import consola  # noqa: E402
 from common.configuracion import campo_valido, positivo, puerto  # noqa: E402
 from common.protocolo import Canal, ConexionCerrada, ErrorProtocolo, empaquetar  # noqa: E402
 
@@ -47,9 +48,9 @@ class SaludEngine:
             cambiado = ok != self._ok
             self._ok = ok
         if cambiado and ok:
-            LOG.info("Salud del Engine: OK")
+            LOG.info("Salud del Engine: OK", extra={"color": "verde"})
         elif cambiado:
-            LOG.warning("Salud del Engine: KO (avería)")
+            LOG.warning("Salud del Engine: KO (avería)", extra={"color": "rojo"})
 
 
 def notificar_salud(canal, ws_id, ok):
@@ -61,7 +62,7 @@ def notificar_salud(canal, ws_id, ok):
 
 
 def mantener_sesion(conexion, ws_id, ubicacion, parada, intervalo=2.0, timeout=3.0,
-                    registro_confirmado=None, salud=None):
+                    registro_confirmado=None, salud=None, al_registrar=None):
     canal = Canal(conexion, timeout=timeout)
     try:
         canal.saludar()
@@ -72,7 +73,10 @@ def mantener_sesion(conexion, ws_id, ubicacion, parada, intervalo=2.0, timeout=3
             raise ErrorProtocolo(f"Respuesta de registro inesperada: {respuesta!r}")
         if registro_confirmado is not None:
             registro_confirmado.set()
-        LOG.info("Registro confirmado: %s | %s", ws_id, ubicacion)
+        if al_registrar is not None:
+            al_registrar()
+        LOG.info("Registrada en WM_Central: %s | %s", ws_id, ubicacion,
+                 extra={"color": "verde"})
 
         # Tras un registro, CENTRAL considera que la estación no tiene avería.
         notificado_ok = True
@@ -89,7 +93,8 @@ def mantener_sesion(conexion, ws_id, ubicacion, parada, intervalo=2.0, timeout=3
                 respuesta = canal.peticion(f"PING#{ws_id}")
                 if respuesta != "OK":
                     raise ErrorProtocolo(f"Respuesta a PING inesperada: {respuesta!r}")
-                LOG.info("Latido confirmado: %s", ws_id)
+                # Cada 2 s: solo con --verbose, para no tapar el resto de mensajes.
+                LOG.debug("Latido confirmado: %s", ws_id)
                 proximo_ping = time.monotonic() + intervalo
                 continue
             parada.wait(min(restante, INTERVALO_REVISION))
@@ -110,7 +115,7 @@ def atender_engine(conexion, ws_id, salud, parada, registro_confirmado,
         respuesta = canal.peticion(f"ID#{ws_id}")
         if respuesta != "OK":
             raise ErrorProtocolo(f"El Engine no aceptó el ID: {respuesta!r}")
-        LOG.info("Engine conectado y asignado a %s", ws_id)
+        LOG.info("Engine conectado y asignado a %s", ws_id, extra={"color": "verde"})
         while not parada.is_set():
             respuesta = canal.peticion("CHECK")
             if respuesta not in ("OK", "KO"):
@@ -149,12 +154,15 @@ def ejecutar(host, puerto_central, ws_id, ubicacion, parada, intervalo=2.0,
              timeout=3.0, reintento=2.0, registro_confirmado=None, salud=None):
     if registro_confirmado is None:
         registro_confirmado = threading.Event()
+    # Mientras CENTRAL no responde se avisa una sola vez, no en cada reintento.
+    sin_central = threading.Event()
     while not parada.is_set():
         try:
-            LOG.info("Conectando con CENTRAL en %s:%s", host, puerto_central)
+            if not sin_central.is_set():
+                LOG.info("Conectando con WM_Central en %s:%s", host, puerto_central)
             with socket.create_connection((host, puerto_central), timeout=timeout) as conexion:
                 mantener_sesion(conexion, ws_id, ubicacion, parada, intervalo, timeout,
-                                registro_confirmado, salud)
+                                registro_confirmado, salud, al_registrar=sin_central.clear)
         except RegistroRechazado as error:
             if str(error) == "ID_EN_USO" and registro_confirmado.is_set():
                 # Tras un corte de red, CENTRAL puede conservar la sesión vieja
@@ -164,9 +172,14 @@ def ejecutar(host, puerto_central, ws_id, ubicacion, parada, intervalo=2.0,
                 LOG.error("Registro rechazado: %s", error)
                 return 1
         except (OSError, ConexionCerrada, ErrorProtocolo) as error:
-            if not parada.is_set():
-                LOG.warning("Imposible conectar con WM_Central (%s). Reintento en %.1f s",
-                            str(error) or "EOT recibido", reintento)
+            if parada.is_set():
+                pass
+            elif not sin_central.is_set():
+                sin_central.set()
+                LOG.warning("Imposible conectar con WM_Central (%s). Se reintenta cada %.0f s",
+                            str(error) or "EOT recibido", reintento, extra={"color": "rojo"})
+            else:
+                LOG.debug("WM_Central sigue sin responder: %s", error)
         if not parada.is_set():
             parada.wait(reintento)
     LOG.info("Monitor detenido")
@@ -191,6 +204,8 @@ def main(argv=None):
                         help="Puerto donde espera al WM_WS_E. Sin él no se vigila el Engine")
     parser.add_argument("--intervalo-check", type=positivo,
                         default=os.getenv("WM_CHECK_INTERVAL", "1"))
+    parser.add_argument("--verbose", action="store_true",
+                        help="Mostrar también cada latido y cada reintento")
     args = parser.parse_args(argv)
     if not args.host or args.puerto is None:
         parser.error("Indica el host y puerto de CENTRAL por argumentos o variables de entorno")
@@ -202,8 +217,7 @@ def main(argv=None):
         empaquetar(f"REGISTRO#{args.ws_id}#{args.ubicacion}")
     except ValueError as error:
         parser.error(str(error))
-    logging.basicConfig(level=logging.INFO,
-                        format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    consola.configurar(logging.DEBUG if args.verbose else logging.INFO)
     parada = threading.Event()
     for senal in (signal.SIGINT, signal.SIGTERM):
         signal.signal(senal, lambda *_: parada.set())

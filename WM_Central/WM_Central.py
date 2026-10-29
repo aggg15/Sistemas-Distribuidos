@@ -15,6 +15,7 @@ import time
 # Permite importar "common" (en la raíz del repositorio) se lance desde donde se lance.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from common import consola  # noqa: E402
 from common.base_datos import BaseDatos, RUTA_BD  # noqa: E402
 from common.configuracion import campo_valido, entero_positivo, positivo, puerto  # noqa: E402
 from common.protocolo import Canal, ConexionCerrada, ErrorProtocolo, NACK  # noqa: E402
@@ -181,7 +182,7 @@ class SesionMonitor:
             if not registrado:
                 return "KO#ID_EN_USO"
             self.ws_id = ws_id
-            LOG.info("Monitor conectado: %s | %s", ws_id, ubicacion)
+            LOG.info("Monitor conectado: %s | %s", ws_id, ubicacion, extra={"color": "verde"})
             return f"OK#{ws_id}"
 
         if len(campos) != 2 or campos[1] != self.ws_id:
@@ -191,7 +192,8 @@ class SesionMonitor:
             return "OK"
         if operacion in ("AVERIA", "RESUELTA"):
             self.registro.avisar_averia(self.ws_id, self, operacion == "AVERIA")
-            LOG.info("%s: %s", self.ws_id, operacion)
+            LOG.info("%s: %s", self.ws_id, operacion,
+                     extra={"color": "rojo" if operacion == "AVERIA" else "verde"})
             if operacion == "AVERIA":
                 self._interrumpir_riego("FUGA")
             return "OK"
@@ -200,7 +202,7 @@ class SesionMonitor:
     def cerrar(self):
         if self.ws_id is not None:
             self.registro.desconectar(self.ws_id, self)
-            LOG.info("Monitor desconectado: %s", self.ws_id)
+            LOG.info("Monitor desconectado: %s", self.ws_id, extra={"color": "amarillo"})
             self._interrumpir_riego("DESCONEXION")
 
 
@@ -257,7 +259,7 @@ class CentralTCP:
                 LOG.warning("Kafka no disponible (%s). Reintento en 2 s", error)
                 self.parada.wait(2)
                 continue
-            LOG.info("Conectado a Kafka en %s", self.servidor_kafka)
+            LOG.info("Conectado a Kafka en %s", self.servidor_kafka, extra={"color": "verde"})
             try:
                 while not self.parada.is_set():
                     lotes = consumidor.poll(timeout_ms=500)
@@ -409,9 +411,9 @@ def main(argv=None):
                         help="Puerto del panel web (0 para no abrirlo)")
     parser.add_argument("--verbose", action="store_true")
     args = parser.parse_args(argv)
-    logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO,
-                        format="%(asctime)s %(levelname)s %(name)s: %(message)s")
-    logging.getLogger("kafka").setLevel(logging.WARNING)
+    consola.configurar(logging.DEBUG if args.verbose else logging.INFO)
+    consola.escribir(f"WM_Central · sockets en el puerto {args.puerto}, "
+                     f"Kafka en {args.kafka or '(sin Kafka)'}", "negrita")
     try:
         central = CentralTCP(args.host, args.puerto, args.timeout, args.max_conexiones,
                              args.db, args.kafka, args.http)

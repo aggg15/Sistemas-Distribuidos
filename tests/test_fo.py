@@ -98,13 +98,13 @@ class PruebasSeguimiento(unittest.TestCase):
         ahora = [0.0]
         self.operario.latido = LatidoCentral(reloj=lambda: ahora[0])
         ahora[0] = 10.0
-        with patch("builtins.print") as imprimir:
+        with patch("WM_FO.escribir") as imprimir:
             self.operario.revisar_central()
         self.assertIn(MENSAJE_CAIDA, imprimir.call_args.args[0])
-        with self.central_responde("RESUMEN"), patch("builtins.print"):
+        with self.central_responde("RESUMEN"), patch("WM_FO.escribir"):
             self.assertFalse(self.operario.solicitar("WS-04", 5))
         self.assertEqual(self.enviadas, [])
-        with patch("builtins.print"):
+        with patch("WM_FO.escribir"):
             # Un ESTADO_RED reciente indica que CENTRAL ha vuelto.
             self.operario._recibir(TOPIC_ESTADO_RED, {"estaciones": []}, antiguedad_s=0.5)
         self.assertTrue(self.operario.latido.disponible)
@@ -112,7 +112,7 @@ class PruebasSeguimiento(unittest.TestCase):
     def test_al_volver_ve_el_resultado_pero_no_la_telemetria_vieja(self):
         viejo = {"fo_id": "FO1", "ws_id": "WS-04", "peticion_id": "FO1-1", "texto": "fin",
                  "caudal_lpm": 12.0, "volumen_l": 1.0, "segundos": 5}
-        with patch("builtins.print") as imprimir:
+        with patch("WM_FO.escribir") as imprimir:
             self.operario._recibir(TOPIC_NOTIFICACIONES, {**viejo, "tipo": "TELEMETRIA"},
                                    antiguedad_s=60)
             imprimir.assert_not_called()
