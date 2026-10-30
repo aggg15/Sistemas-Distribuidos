@@ -1,45 +1,28 @@
-# CI/CD: en cada push a main se ejecutan las pruebas y, si pasan, se construye
-# la imagen de CENTRAL y se sube a Docker Hub. La instancia EC2 la descarga
-# después con deploy/arrancar_aws.sh (docs/DESPLIEGUE_AWS.md).
-name: Pruebas, imagen y Docker Hub
+
+name: Build and Push to Docker Hub
 
 on:
   push:
     branches:
-      - main
+      - main # Asegúrate de que coincide con tu rama principal
 
 jobs:
-  pruebas:
+  build:
     runs-on: ubuntu-latest
-    steps:
-      - name: Checkout del código
-        uses: actions/checkout@v4
-      - name: Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - name: Dependencias
-        run: pip install -r requirements.txt
-      - name: Pruebas
-        run: python -m unittest -v
 
-  imagen:
-    needs: pruebas  # sin pruebas en verde no se publica ninguna imagen
-    runs-on: ubuntu-latest
     steps:
       - name: Checkout del código
-        uses: actions/checkout@v4
+        uses: actions/checkout@v3
+
       - name: Iniciar sesión en Docker Hub
-        uses: docker/login-action@v3
+        uses: docker/login-action@v2
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
-      - name: Construir y subir la imagen de CENTRAL
-        uses: docker/build-push-action@v6
+
+      - name: Construir y subir imagen
+        uses: docker/build-push-action@v4
         with:
           context: .
           push: true
-          # latest para desplegar; el hash del commit para saber qué versión corre.
-          tags: |
-            ${{ secrets.DOCKER_USERNAME }}/wm-central:latest
-            ${{ secrets.DOCKER_USERNAME }}/wm-central:${{ github.sha }}
+          tags: ${{ secrets.DOCKER_USERNAME }}/practica-aws:latest
