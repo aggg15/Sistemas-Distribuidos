@@ -4,7 +4,7 @@
 #   bash deploy/arrancar_aws.sh            usa la IP pública de la instancia
 #   bash deploy/arrancar_aws.sh 3.80.1.2   usa la IP indicada (por ejemplo, una Elastic IP)
 #
-# Si el fichero .env define WM_CENTRAL_IMAGE (usuario/wm-central:latest), se
+# Si el fichero .env define WM_CENTRAL_IMAGE (usuario/practica-aws:latest), se
 # descarga la imagen que GitHub Actions ha subido a Docker Hub. Si no, se
 # construye aquí a partir del código.
 #

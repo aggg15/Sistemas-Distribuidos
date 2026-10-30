@@ -8,8 +8,10 @@ COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 COPY common/ ./common/
 COPY WM_Central/ ./WM_Central/
-# El Monitor solo se usa en la prueba opcional de docker-compose (perfil demo).
-COPY WM_WS/WM_WS_M.py ./WM_WS/WM_WS_M.py
+# Una sola imagen para todos los módulos: por defecto arranca CENTRAL y en el
+# laboratorio se indica el módulo al lanzarla (docs/DESPLIEGUE_AWS.md, apartado 7).
+COPY WM_WS/ ./WM_WS/
+COPY WM_FO/ ./WM_FO/
 COPY scripts/gestionar_bd.py ./scripts/gestionar_bd.py
 
 # 9999: sockets de los Monitores. 8080: panel web.

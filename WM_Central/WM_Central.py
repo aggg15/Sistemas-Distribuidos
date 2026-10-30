@@ -21,6 +21,7 @@ from common.configuracion import campo_valido, entero_positivo, positivo, puerto
 from common.protocolo import Canal, ConexionCerrada, ErrorProtocolo, NACK  # noqa: E402
 from common.topics import TOPIC_EVENTOS_WS, TOPIC_PETICIONES  # noqa: E402
 from gestor_riegos import GestorRiegos  # noqa: E402
+from panel_remoto import crear_panel_remoto  # noqa: E402
 from panel_web import RegistroEventos, crear_panel  # noqa: E402
 
 LOG = logging.getLogger("WM_Central")
@@ -394,6 +395,23 @@ class CentralTCP:
             LOG.info("Central detenida")
 
 
+def servir_panel_remoto(parser, url_central, puerto_http):
+    consola.escribir(f"WM_Central · solo panel web en el puerto {puerto_http}, "
+                     f"datos de {url_central}", "negrita")
+    try:
+        servidor = crear_panel_remoto(url_central, puerto=puerto_http)
+    except OSError as error:
+        parser.exit(1, f"No se pudo abrir el panel: {error}\n")
+    # ECS para el contenedor con SIGTERM: se sale de serve_forever sin traza.
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
+    try:
+        servidor.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        servidor.server_close()
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("puerto", nargs="?", type=puerto,
@@ -409,9 +427,15 @@ def main(argv=None):
                         help="Ruta del fichero SQLite (por defecto data/wm.db)")
     parser.add_argument("--http", type=int, default=os.getenv("WM_HTTP_PORT", "8080"),
                         help="Puerto del panel web (0 para no abrirlo)")
+    parser.add_argument("--remota", default=os.getenv("WM_CENTRAL_REMOTA"),
+                        help="URL del panel de una CENTRAL en otra máquina "
+                             "(http://IP:8080): solo se sirve su panel (ECS)")
     parser.add_argument("--verbose", action="store_true")
     args = parser.parse_args(argv)
     consola.configurar(logging.DEBUG if args.verbose else logging.INFO)
+    if args.remota:
+        servir_panel_remoto(parser, args.remota, args.http)
+        return
     consola.escribir(f"WM_Central · sockets en el puerto {args.puerto}, "
                      f"Kafka en {args.kafka or '(sin Kafka)'}", "negrita")
     try:

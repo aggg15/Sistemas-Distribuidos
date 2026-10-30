@@ -5,7 +5,7 @@ Flujo que pide la asignatura: **VS Code → GitHub → AWS**. Sigue el tutorial
 en el apartado 1.
 
 ```text
- VS Code ── git push ──▶ GitHub ── Actions: pruebas + imagen ──▶ Docker Hub
+ VS Code ── git push ──▶ GitHub ── Actions: imagen ──────────▶ Docker Hub
                                                                      │ docker compose pull
                                                                      ▼
                 AWS (instancia EC2 "wm-central", Docker)
@@ -34,7 +34,7 @@ tutorial.
 ## 2. Docker Hub y secretos de GitHub (una vez)
 
 1. En [hub.docker.com](https://hub.docker.com), crear el repositorio
-   **`wm-central`**, visibilidad **Public**.
+   **`practica-aws`**, visibilidad **Public**.
 2. En Docker Hub, **Account settings → Personal access tokens → Generate new
    token** con permiso *Read & Write*. Es preferible a usar la contraseña.
 3. En GitHub, en el repositorio: **Settings → Secrets and variables → Actions →
@@ -43,9 +43,10 @@ tutorial.
    - `DOCKER_PASSWORD`: el token del paso anterior.
 
 El fichero [.github/workflows/deploy.yml](../.github/workflows/deploy.yml) se
-ejecuta en cada `git push` a `main`: lanza las pruebas y, solo si pasan,
-construye la imagen y la sube como `usuario/wm-central:latest` (y con el hash
-del commit). El resultado se ve en la pestaña **Actions** de GitHub.
+es el del tutorial: en cada `git push` a `main` construye la imagen con el
+`Dockerfile` y la sube como `usuario/practica-aws:latest`. El resultado se ve
+en la pestaña **Actions** de GitHub. Las pruebas se lanzan antes en local con
+`python -m unittest`.
 
 ## 3. Crear la instancia EC2
 
@@ -112,7 +113,7 @@ usar Docker sin `sudo`). Después:
 ```bash
 git clone https://github.com/aggg15/Sistemas-Distribuidos.git
 cd Sistemas-Distribuidos
-echo "WM_CENTRAL_IMAGE=USUARIO_DOCKERHUB/wm-central:latest" > .env
+echo "WM_CENTRAL_IMAGE=USUARIO_DOCKERHUB/practica-aws:latest" > .env
 ```
 
 El fichero `.env` indica qué imagen de Docker Hub usar. Está en `.gitignore`: es
@@ -146,6 +147,31 @@ Los contenedores tienen `restart: unless-stopped`: si el laboratorio se para y
 se vuelve a arrancar, se levantan solos. Sin Elastic IP, hay que volver a
 ejecutar el script para que Kafka anuncie la IP nueva.
 
+## 5 bis. Panel web en ECS Express (opcional)
+
+Para mantener el paso 3 del tutorial (la web en ECS Express con su URL
+pública), ECS ejecuta la misma imagen de CENTRAL en **modo panel remoto**: no
+abre sockets ni se conecta a Kafka, solo sirve la página del panel y reenvía
+sus consultas al panel de la CENTRAL de EC2
+([WM_Central/panel_remoto.py](../WM_Central/panel_remoto.py)). Así la URL de
+ECS muestra en todo momento lo mismo que `http://IP_AWS:8080`.
+
+En **ECS → Modo exprés → Crear** (o **Actualizar** el servicio existente):
+
+| Campo | Valor |
+| --- | --- |
+| URI de imagen | `docker.io/USUARIO_DOCKERHUB/practica-aws:latest` |
+| Puerto del contenedor | `8080` |
+| Variable de entorno | `WM_CENTRAL_REMOTA` = `http://IP_AWS:8080` |
+
+Con esa variable la imagen arranca solo el panel. Sin ella es la CENTRAL
+completa, la que corre en EC2. `IP_AWS` debe ser fija (Elastic IP): si
+cambia, hay que actualizar la variable.
+
+Tras cada `git push`, cuando Actions haya subido la imagen nueva, se actualizan
+las dos partes: EC2 con `bash deploy/arrancar_aws.sh` y ECS con **Actualizar →
+Forzar nueva implementación**, como en el tutorial.
+
 ## 6. Dar de alta a los operarios
 
 Las solicitudes de un operario que no está en la base de datos se deniegan:
@@ -160,25 +186,41 @@ reiniciar el contenedor.
 
 ## 7. Conectar los módulos del laboratorio
 
-En cada PC del laboratorio, con el repositorio clonado y las dependencias
-instaladas (`pip install -r requirements.txt`):
+Los módulos del laboratorio se lanzan con Docker, con la misma imagen que
+publica GitHub Actions: no hace falta clonar el repositorio ni instalar Python
+ni kafka-python en los PCs. Primero, en cada PC:
 
 ```bash
-python3 WM_WS/WM_WS_M.py IP_AWS 9999 WS-04 "River Park" --puerto-engine 9100
-python3 WM_WS/WM_WS_E.py IP_AWS:9092 localhost 9100
-python3 WM_FO/WM_FO.py IP_AWS:9092 FO1 --fichero WM_FO/peticiones_ejemplo.txt
+docker pull USUARIO_DOCKERHUB/practica-aws:latest
 ```
 
-Monitor y Engine de una misma estación van en el mismo PC (se hablan por
-`localhost`). Cada estación necesita su propio ID y su propio puerto de Engine.
+Cada módulo, en su propia terminal (`-it` para poder usar su menú):
+
+```bash
+docker run --rm -it --network host --name ws04-monitor USUARIO_DOCKERHUB/practica-aws python WM_WS/WM_WS_M.py IP_AWS 9999 WS-04 "River Park" --puerto-engine 9100
+docker run --rm -it --network host --name ws04-engine -v wm-engine:/app/data USUARIO_DOCKERHUB/practica-aws python WM_WS/WM_WS_E.py IP_AWS:9092 localhost 9100
+docker run --rm -it --network host --name fo1 USUARIO_DOCKERHUB/practica-aws python WM_FO/WM_FO.py IP_AWS:9092 FO1
+```
+
+- `--network host`: el contenedor usa la red del PC. Así el Engine llega a su
+  Monitor por `localhost`, como sin Docker.
+- `-v wm-engine:/app/data`: el Engine guarda ahí el riego en curso; si se cae y
+  se vuelve a lanzar, lo recupera.
+- `--name`: permite simular un *crash* desde otra terminal, por ejemplo
+  `docker kill ws04-engine`.
+
+Monitor y Engine de una misma estación van en el mismo PC. Cada estación
+necesita su propio ID, su propio puerto de Engine y nombres de contenedor
+distintos (`ws05-monitor`, `ws05-engine`, puerto 9101...).
 
 ## 8. Problemas habituales
 
 | Síntoma | Causa probable |
 | --- | --- |
-| Actions en rojo en "Pruebas" | Alguna prueba falla: no se publica imagen hasta arreglarla. |
-| Actions en rojo en "Imagen" | Secretos de Docker Hub mal escritos o token sin permiso de escritura. |
+| Actions en rojo | Secretos de Docker Hub mal escritos o token sin permiso de escritura. |
 | `pull access denied` en la instancia | `WM_CENTRAL_IMAGE` mal escrita o repositorio de Docker Hub privado. |
+| La URL de ECS muestra "Sin conexión con WM_Central" | `WM_CENTRAL_REMOTA` mal escrita, falta la regla del puerto 8080 o la IP de EC2 ha cambiado. |
+| La URL de ECS muestra un panel vacío con "Sin Kafka" | Falta la variable `WM_CENTRAL_REMOTA`: ECS está ejecutando una CENTRAL completa aparte. |
 | El Monitor no conecta con CENTRAL | Falta la regla del puerto 9999, o CENTRAL no está en marcha (`docker compose ps`). |
 | El FO se queda en "Conectando con Kafka" | Falta la regla del puerto 9092. |
 | El FO conecta pero luego da error de Kafka | Kafka anuncia una IP antigua: `bash deploy/arrancar_aws.sh IP_AWS`. |
