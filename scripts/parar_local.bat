@@ -1,11 +1,11 @@
 @echo off
-rem Cierra las ventanas que abrió scripts\probar_local.bat (su título empieza
-rem por "WM ") y los programas que corren dentro de ellas.
+rem Cierra las ventanas que abrieron scripts\probar_local.bat o
+rem scripts\probar_aws.bat y los programas que corren dentro de ellas.
 rem
 rem   scripts\parar_local.bat           todo menos Kafka
 rem   scripts\parar_local.bat kafka     también Kafka
 
-for %%v in ("WM Central" "WM WS-04 Monitor" "WM WS-04 Engine" "WM WS-05 Monitor" "WM WS-05 Engine" "WM FO1" "WM FO2") do (
+for %%v in ("WM Central" "WM WS-04 Monitor" "WM WS-04 Engine" "WM WS-05 Monitor" "WM WS-05 Engine" "WM WS-07 Monitor" "WM WS-07 Engine" "WM WS-11 Monitor" "WM WS-11 Engine" "WM FO1" "WM FO2") do (
     taskkill /fi "WINDOWTITLE eq %%~v*" /t /f >nul 2>&1
 )
 
