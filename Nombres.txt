@@ -1,6 +1,6 @@
 Sistemas Distribuidos 2026/27 - Water Management
-Grupo de prácticas:
+Grupo de prácticas: 3
 
 Integrantes:
--
--
+- Bruno Vilella Martínez
+- Antonio García Gómez
