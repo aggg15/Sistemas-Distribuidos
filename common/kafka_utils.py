@@ -4,8 +4,8 @@ import math
 import time
 
 from kafka import KafkaAdminClient, KafkaConsumer, KafkaProducer, TopicPartition
-from kafka.admin import NewTopic
-from kafka.errors import KafkaTimeoutError, TopicAlreadyExistsError
+from kafka.admin import ConfigResource, ConfigResourceType, NewTopic
+from kafka.errors import KafkaError, KafkaTimeoutError, TopicAlreadyExistsError
 from kafka.serializer import DefaultSerializer, JsonSerializer
 
 # Se reexportan para que quien ya importaba los topics desde aquí siga funcionando.
@@ -13,6 +13,11 @@ from common.topics import (  # noqa: F401
     TOPIC_ESTADO_RED, TOPIC_EVENTOS_WS, TOPIC_NOTIFICACIONES, TOPIC_ORDENES,
     TOPIC_PETICIONES,
 )
+
+# Los mensajes llevan la hora del broker, no la del PC que los envía: los relojes
+# de los PC del laboratorio pueden ir desfasados. CENTRAL compara esa hora con
+# la suya y en AWS comparte máquina (y reloj) con Kafka.
+CONFIG_TOPICS = {"message.timestamp.type": "LogAppendTime"}
 
 
 def crear_productor(servidor):
@@ -56,13 +61,22 @@ def crear_topics(servidor, topics):
     admin = KafkaAdminClient(bootstrap_servers=servidor, request_timeout_ms=5000)
     try:
         existentes = set(admin.list_topics())
-        nuevos = [NewTopic(topic, num_partitions=1, replication_factor=1)
+        nuevos = [NewTopic(topic, num_partitions=1, replication_factor=1,
+                           topic_configs=CONFIG_TOPICS)
                   for topic in topics if topic not in existentes]
         if nuevos:
             try:
                 admin.create_topics(nuevos)
             except TopicAlreadyExistsError:
                 pass  # otro módulo lo creó a la vez
+        # Los topics creados antes de usar la hora del broker se ajustan también.
+        anteriores = [ConfigResource(ConfigResourceType.TOPIC, topic, configs=CONFIG_TOPICS)
+                      for topic in topics if topic in existentes]
+        if anteriores:
+            try:
+                admin.alter_configs(anteriores)
+            except KafkaError:
+                pass  # sin permiso: se sigue usando la hora del emisor
     finally:
         admin.close()
 
@@ -102,3 +116,19 @@ def crear_consumidor(servidor, topics, grupo, confirmacion_manual=False):
         consumidor.close()
         raise
     return consumidor
+
+
+def fin_inicial(consumidor):
+    """Dónde acaba cada partición asignada al conectar.
+
+    Lo que esté antes de ese punto ya esperaba en Kafka (se envió mientras el
+    módulo estaba cerrado); lo demás llega en directo. Así se distingue sin
+    comparar relojes de máquinas distintas.
+    """
+    finales = consumidor.end_offsets(list(consumidor.assignment()))
+    return {(particion.topic, particion.partition): fin for particion, fin in finales.items()}
+
+
+def es_atrasado(registro, fin):
+    """True si el registro ya estaba en Kafka cuando se calculó fin_inicial()."""
+    return registro.offset < fin.get((registro.topic, registro.partition), 0)

@@ -106,7 +106,7 @@ class PruebasSeguimiento(unittest.TestCase):
         self.assertEqual(self.enviadas, [])
         with patch("WM_FO.escribir"):
             # Un ESTADO_RED reciente indica que CENTRAL ha vuelto.
-            self.operario._recibir(TOPIC_ESTADO_RED, {"estaciones": []}, antiguedad_s=0.5)
+            self.operario._recibir(TOPIC_ESTADO_RED, {"estaciones": []}, atrasado=False)
         self.assertTrue(self.operario.latido.disponible)
 
     def test_al_volver_ve_el_resultado_pero_no_la_telemetria_vieja(self):
@@ -114,10 +114,10 @@ class PruebasSeguimiento(unittest.TestCase):
                  "caudal_lpm": 12.0, "volumen_l": 1.0, "segundos": 5}
         with patch("WM_FO.escribir") as imprimir:
             self.operario._recibir(TOPIC_NOTIFICACIONES, {**viejo, "tipo": "TELEMETRIA"},
-                                   antiguedad_s=60)
+                                   atrasado=True)
             imprimir.assert_not_called()
             self.operario._recibir(TOPIC_NOTIFICACIONES, {**viejo, "tipo": "RESUMEN"},
-                                   antiguedad_s=60)
+                                   atrasado=True)
         impreso = " ".join(str(a) for llamada in imprimir.call_args_list for a in llamada.args)
         self.assertIn("mientras estabas desconectado", impreso)
         self.assertIn("[FIN]", impreso)

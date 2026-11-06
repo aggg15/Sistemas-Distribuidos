@@ -330,8 +330,16 @@ envían solicitudes nuevas hasta que vuelve.
 
 Si Kafka no confirma un `RIEGO_FINALIZADO`, el Engine lo guarda como pendiente
 (también en disco) y lo reenvía cada segundo hasta que se entrega. Las órdenes
-`INICIAR_RIEGO` con más de 5 s en Kafka se ignoran: CENTRAL ya las canceló por
-falta de respuesta.
+`INICIAR_RIEGO` que ya esperaban en Kafka cuando el Engine se conectó se
+ignoran: CENTRAL ya las canceló por falta de respuesta.
+
+**Sin depender de los relojes.** Los relojes de los PC del laboratorio pueden
+ir desfasados respecto a AWS. Por eso FO y Engine no comparan horas para saber
+si un mensaje es antiguo: al conectar apuntan dónde acaba cada partición
+(`fin_inicial` en `common/kafka_utils.py`) y lo que esté antes es atrasado.
+CENTRAL sí mide la antigüedad de las solicitudes (30 s), pero con la hora del
+broker (topics con `message.timestamp.type=LogAppendTime`), que en AWS comparte
+máquina con ella.
 
 **Consumo de Kafka.** Cada módulo usa su propio grupo (`central`,
 `engine-<WS>`, `fo-<id>`) y es su único consumidor, así que no se suscribe: se

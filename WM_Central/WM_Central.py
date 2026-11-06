@@ -279,7 +279,8 @@ class CentralTCP:
     def _procesar_registro_kafka(self, registro):
         try:
             if registro.topic == TOPIC_PETICIONES:
-                # registro.timestamp: milisegundos desde 1970 en que se envió.
+                # registro.timestamp: milisegundos desde 1970 en que Kafka lo
+                # guardó (hora del broker, ver CONFIG_TOPICS en kafka_utils).
                 antiguedad_s = time.time() - registro.timestamp / 1000
                 self.gestor.procesar_peticion(registro.value, antiguedad_s)
             else:

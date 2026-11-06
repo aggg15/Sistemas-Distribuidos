@@ -30,17 +30,14 @@ from common import consola  # noqa: E402
 from common.configuracion import positivo, puerto  # noqa: E402
 from common.kafka_utils import (  # noqa: E402
     TOPIC_ESTADO_RED, TOPIC_EVENTOS_WS, TOPIC_ORDENES, TOPIC_PETICIONES,
-    crear_consumidor, crear_productor, enviar)
-from common.latido import MENSAJE_CAIDA, PLAZO_S, LatidoCentral  # noqa: E402
+    crear_consumidor, crear_productor, enviar, es_atrasado, fin_inicial)
+from common.latido import MENSAJE_CAIDA, LatidoCentral  # noqa: E402
 from common.protocolo import Canal, ConexionCerrada, ErrorProtocolo  # noqa: E402
 
 LOG = logging.getLogger("WM_WS_E")
 
 CAUDAL_MIN_LPM = 10.0
 CAUDAL_MAX_LPM = 20.0
-# Una orden de riego más antigua (p. ej. enviada mientras el Engine estaba
-# caído) ya la canceló CENTRAL por falta de respuesta: no se ejecuta.
-CADUCIDAD_ORDEN_S = 5.0
 
 
 @dataclass
@@ -411,6 +408,7 @@ class Engine:
                     self.productor = crear_productor(self.servidor_kafka)
                 consumidor = crear_consumidor(self.servidor_kafka,
                                               [TOPIC_ORDENES, TOPIC_ESTADO_RED], grupo)
+                fin = fin_inicial(consumidor)
             except (KafkaError, OSError) as error:
                 LOG.warning("Kafka no disponible (%s). Reintento en %.1f s",
                             error, self.reintento)
@@ -424,23 +422,24 @@ class Engine:
                     # poll con plazo para poder comprobar la parada periódicamente.
                     for registros in consumidor.poll(timeout_ms=500).values():
                         for registro in registros:
-                            self._recibir(registro)
+                            self._recibir(registro, es_atrasado(registro, fin))
             except (KafkaError, OSError, ValueError) as error:
                 LOG.warning("Error leyendo órdenes de Kafka: %s", error)
             finally:
                 consumidor.close()
 
-    def _recibir(self, registro):
-        # registro.timestamp: milisegundos desde 1970 en que se envió.
-        antiguedad_s = time.time() - registro.timestamp / 1000
+    def _recibir(self, registro, atrasado=False):
+        """atrasado: ya estaba en Kafka al conectar (se envió con el Engine caído)."""
         mensaje = registro.value
         if registro.topic == TOPIC_ESTADO_RED:
-            # Los antiguos (leídos al arrancar) no dicen nada de CENTRAL ahora.
-            if antiguedad_s < PLAZO_S and self.estacion.latido.recibido():
+            # Los atrasados (leídos al arrancar) no dicen nada de CENTRAL ahora.
+            if not atrasado and self.estacion.latido.recibido():
                 LOG.info("WM_Central disponible de nuevo", extra={"color": "verde"})
             return
         if (isinstance(mensaje, dict) and mensaje.get("tipo") == "INICIAR_RIEGO"
-                and antiguedad_s > CADUCIDAD_ORDEN_S):
+                and atrasado):
+            # Se envió con el Engine caído: CENTRAL ya la canceló al no recibir
+            # respuesta en 5 s, así que no se abre la válvula.
             LOG.warning("Orden de riego %s caducada: se ignora", mensaje.get("riego_id"))
             return
         self.estacion.procesar_orden(mensaje)

@@ -5,8 +5,10 @@ import unittest
 from unittest.mock import Mock, patch
 
 try:
+    from kafka import TopicPartition
     from kafka.errors import KafkaTimeoutError, TopicAuthorizationFailedError
-    from common.kafka_utils import crear_consumidor, enviar
+    from common.kafka_utils import (CONFIG_TOPICS, crear_consumidor, enviar, es_atrasado,
+                                    fin_inicial)
 except ModuleNotFoundError as error:
     if error.name != "kafka":
         raise
@@ -70,6 +72,11 @@ class PruebasConsumidor(unittest.TestCase):
                                          confirmacion_manual=True)
         creados = admin.return_value.create_topics.call_args.args[0]
         self.assertEqual([t.name for t in creados], ["wm.b"])
+        # Hora del broker en los mensajes: el topic nuevo se crea así y el que
+        # ya existía se ajusta.
+        self.assertEqual(creados[0].topic_configs, CONFIG_TOPICS)
+        ajustados = admin.return_value.alter_configs.call_args.args[0]
+        self.assertEqual([(r.name, r.configs) for r in ajustados], [("wm.a", CONFIG_TOPICS)])
         self.assertFalse(consumidor.call_args.kwargs["enable_auto_commit"])
         asignadas = resultado.assign.call_args.args[0]
         self.assertEqual([(p.topic, p.partition) for p in asignadas],
@@ -82,6 +89,20 @@ class PruebasConsumidor(unittest.TestCase):
             with self.assertRaises(KafkaTimeoutError):
                 crear_consumidor("kafka:9092", ["wm.a"], "grupo")
         consumidor.return_value.close.assert_called_once()
+
+    def test_atrasado_segun_la_posicion_al_conectar_no_segun_el_reloj(self):
+        consumidor = Mock()
+        consumidor.assignment.return_value = {TopicPartition("wm.a", 0)}
+        consumidor.end_offsets.return_value = {TopicPartition("wm.a", 0): 10}
+        fin = fin_inicial(consumidor)
+
+        def registro(offset, topic="wm.a"):
+            # timestamp absurdo a propósito: no debe influir.
+            return SimpleNamespace(topic=topic, partition=0, offset=offset, timestamp=0)
+
+        self.assertTrue(es_atrasado(registro(9), fin))
+        self.assertFalse(es_atrasado(registro(10), fin))
+        self.assertFalse(es_atrasado(registro(0, topic="wm.otro"), fin))
 
 
 if __name__ == "__main__":

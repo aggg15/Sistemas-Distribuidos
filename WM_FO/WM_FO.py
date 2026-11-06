@@ -25,8 +25,8 @@ from common.configuracion import campo_valido, positivo  # noqa: E402
 from common.consola import escribir  # noqa: E402
 from common.kafka_utils import (  # noqa: E402
     TOPIC_ESTADO_RED, TOPIC_NOTIFICACIONES, TOPIC_PETICIONES,
-    crear_consumidor, crear_productor, enviar)
-from common.latido import MENSAJE_CAIDA, PLAZO_S, LatidoCentral  # noqa: E402
+    crear_consumidor, crear_productor, enviar, es_atrasado, fin_inicial)
+from common.latido import MENSAJE_CAIDA, LatidoCentral  # noqa: E402
 
 LOG = logging.getLogger("WM_FO")
 
@@ -97,6 +97,7 @@ class Operario:
                     self.productor = crear_productor(self.servidor_kafka)
                 consumidor = crear_consumidor(
                     self.servidor_kafka, [TOPIC_NOTIFICACIONES, TOPIC_ESTADO_RED], grupo)
+                fin = fin_inicial(consumidor)
             except (KafkaError, OSError) as error:
                 LOG.warning("Kafka no disponible (%s). Reintento en 2 s", error)
                 self.parada.wait(2)
@@ -114,9 +115,8 @@ class Operario:
                         self.listo.set()
                     for registros in lotes.values():
                         for registro in registros:
-                            # registro.timestamp: milisegundos desde 1970.
-                            antiguedad_s = time.time() - registro.timestamp / 1000
-                            self._recibir(registro.topic, registro.value, antiguedad_s)
+                            self._recibir(registro.topic, registro.value,
+                                          es_atrasado(registro, fin))
                     if self.listo.is_set():
                         self.revisar_central()
             except (KafkaError, OSError, ValueError) as error:
@@ -128,18 +128,19 @@ class Operario:
         if self.latido.revisar():
             escribir(f"[ NO] {MENSAJE_CAIDA}: no se pueden solicitar riegos", "rojo")
 
-    def _recibir(self, topic, mensaje, antiguedad_s=0.0):
+    def _recibir(self, topic, mensaje, atrasado=False):
+        """atrasado: ya estaba en Kafka al conectar (se envió con el FO cerrado)."""
         if not isinstance(mensaje, dict):
             return
         if topic == TOPIC_ESTADO_RED:
             self.estaciones = mensaje.get("estaciones", [])
-            # Un ESTADO_RED antiguo (leído al volver) no dice nada de CENTRAL ahora.
-            if antiguedad_s < PLAZO_S and self.latido.recibido():
+            # Un ESTADO_RED atrasado (leído al volver) no dice nada de CENTRAL ahora.
+            if not atrasado and self.latido.recibido():
                 escribir("[ OK] WM_Central disponible de nuevo", "verde")
         elif mensaje.get("fo_id") == self.fo_id:
-            if mensaje.get("tipo") == "TELEMETRIA" and antiguedad_s > PLAZO_S:
-                return  # telemetría atrasada de mientras el FO estaba cerrado
-            previo = "(mientras estabas desconectado) " if antiguedad_s > PLAZO_S else ""
+            if mensaje.get("tipo") == "TELEMETRIA" and atrasado:
+                return  # telemetría de mientras el FO estaba cerrado
+            previo = "(mientras estabas desconectado) " if atrasado else ""
             escribir(previo + formatear(mensaje), COLOR_TIPO.get(mensaje.get("tipo")))
             if mensaje.get("peticion_id") == self._en_curso:
                 self._eventos.put(mensaje)
