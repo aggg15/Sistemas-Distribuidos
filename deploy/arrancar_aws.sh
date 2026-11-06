@@ -39,17 +39,26 @@ fi
 echo "Actualizando docker-compose.yml y scripts desde GitHub..."
 git pull --ff-only
 
-export KAFKA_HOST="$IP_PUBLICA"
+# Si el usuario no está en el grupo docker, se usa sudo. sudo no hereda las
+# variables de entorno: KAFKA_HOST se le pasa explícitamente.
+compose() {
+    if docker info >/dev/null 2>&1; then
+        KAFKA_HOST="$IP_PUBLICA" docker compose "$@"
+    else
+        sudo KAFKA_HOST="$IP_PUBLICA" docker compose "$@"
+    fi
+}
+
 if [ -n "${WM_CENTRAL_IMAGE:-}" ]; then
     echo "Descargando $WM_CENTRAL_IMAGE de Docker Hub..."
-    docker compose pull central
-    docker compose up -d --no-build central kafka
+    compose pull central
+    compose up -d --no-build central kafka
 else
     echo "WM_CENTRAL_IMAGE no definida: se construye la imagen en esta máquina..."
-    docker compose up -d --build central kafka
+    compose up -d --build central kafka
 fi
 
-docker compose ps
+compose ps
 echo
 echo "Listo. Desde los laboratorios:"
 echo "  CENTRAL (sockets): $IP_PUBLICA:9999"

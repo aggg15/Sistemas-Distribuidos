@@ -5,7 +5,8 @@ rem
 rem   scripts\parar_local.bat           todo menos Kafka
 rem   scripts\parar_local.bat kafka     también Kafka
 
-for %%v in ("WM Central" "WM WS-04 Monitor" "WM WS-04 Engine" "WM WS-05 Monitor" "WM WS-05 Engine" "WM WS-07 Monitor" "WM WS-07 Engine" "WM WS-11 Monitor" "WM WS-11 Engine" "WM FO1" "WM FO2") do (
+rem "WM Engine" cubre las ventanas de scripts\engine.bat ("WM Engine 9100"...).
+for %%v in ("WM Central" "WM WS-04 Monitor" "WM WS-04 Engine" "WM WS-05 Monitor" "WM WS-05 Engine" "WM WS-07 Monitor" "WM WS-07 Engine" "WM WS-11 Monitor" "WM WS-11 Engine" "WM Engine" "WM FO1" "WM FO2") do (
     taskkill /fi "WINDOWTITLE eq %%~v*" /t /f >nul 2>&1
 )
 
