@@ -1,0 +1,8 @@
+# Cinco riegos para WM_FO: una petición por línea, ws_id;duración en segundos.
+# Tras terminar cada una (con éxito o no) el operario espera 4 segundos.
+# Usa las estaciones del caso base WS-04 y WS-05 (Monitor + Engine en marcha).
+WS-04;10
+WS-05;12
+WS-04;8
+WS-05;15
+WS-04;10

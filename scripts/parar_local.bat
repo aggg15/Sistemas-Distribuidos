@@ -10,6 +10,10 @@ for %%v in ("WM Central" "WM WS-04 Monitor" "WM WS-04 Engine" "WM WS-05 Monitor"
     taskkill /fi "WINDOWTITLE eq %%~v*" /t /f >nul 2>&1
 )
 
+rem Cerrar la ventana no siempre para su contenedor: se paran los que lanzaron
+rem monitor.bat, engine.bat y operario.bat (todos se llaman wm-...).
+for /f %%c in ('docker ps -q --filter "name=wm-" 2^>nul') do docker rm -f %%c >nul 2>&1
+
 if /i "%~1"=="kafka" (
     rem Se para de forma ordenada; en WSL 1 matarlo de golpe estropea sus datos.
     wsl.exe -e bash -lc "~/kafka_2.13-3.9.1/bin/kafka-server-stop.sh" >nul 2>&1
