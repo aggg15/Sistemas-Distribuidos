@@ -81,7 +81,7 @@ def crear_topics(servidor, topics):
         admin.close()
 
 
-def crear_consumidor(servidor, topics, grupo, confirmacion_manual=False):
+def crear_consumidor(servidor, topics, grupo, confirmacion_manual=False, solo_nuevos=()):
     """Consumidor que lee todas las particiones de esos topics.
 
     Cada módulo (CENTRAL, cada Engine, cada FO) usa su propio grupo, así que
@@ -93,6 +93,11 @@ def crear_consumidor(servidor, topics, grupo, confirmacion_manual=False):
 
     Con confirmacion_manual, la posición solo se guarda al llamar a commit(),
     después de procesar los mensajes: si el proceso cae antes, se vuelven a leer.
+
+    De los topics de solo_nuevos se salta lo acumulado y se empieza por el
+    final. Es para ESTADO_RED: CENTRAL lo publica cada 2 s y en unos días hay
+    cientos de miles de mensajes que no sirven de nada; leerlos al conectar
+    retrasaba el primer latido y hacía creer que CENTRAL estaba caída.
     """
     crear_topics(servidor, topics)
     consumidor = KafkaConsumer(
@@ -112,6 +117,9 @@ def crear_consumidor(servidor, topics, grupo, confirmacion_manual=False):
                 raise KafkaTimeoutError(f"Sin metadatos del topic {topic}")
             particiones += [TopicPartition(topic, numero) for numero in numeros]
         consumidor.assign(particiones)
+        saltar = [particion for particion in particiones if particion.topic in solo_nuevos]
+        if saltar:
+            consumidor.seek_to_end(*saltar)
     except BaseException:
         consumidor.close()
         raise

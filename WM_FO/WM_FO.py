@@ -96,7 +96,8 @@ class Operario:
                 if self.productor is None:
                     self.productor = crear_productor(self.servidor_kafka)
                 consumidor = crear_consumidor(
-                    self.servidor_kafka, [TOPIC_NOTIFICACIONES, TOPIC_ESTADO_RED], grupo)
+                    self.servidor_kafka, [TOPIC_NOTIFICACIONES, TOPIC_ESTADO_RED], grupo,
+                    solo_nuevos=[TOPIC_ESTADO_RED])
                 fin = fin_inicial(consumidor)
             except (KafkaError, OSError) as error:
                 LOG.warning("Kafka no disponible (%s). Reintento en 2 s", error)

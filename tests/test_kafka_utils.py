@@ -82,6 +82,16 @@ class PruebasConsumidor(unittest.TestCase):
         self.assertEqual([(p.topic, p.partition) for p in asignadas],
                          [("wm.a", 0), ("wm.b", 0)])
 
+    def test_salta_lo_acumulado_de_los_topics_solo_nuevos(self):
+        # ESTADO_RED acumulado durante días no se lee: se empieza por el final.
+        with patch("common.kafka_utils.KafkaAdminClient"), \
+                patch("common.kafka_utils.KafkaConsumer") as consumidor:
+            consumidor.return_value.partitions_for_topic.side_effect = lambda t: {0}
+            resultado = crear_consumidor("kafka:9092", ["wm.ordenes", "wm.estado_red"],
+                                         "grupo", solo_nuevos=["wm.estado_red"])
+        saltadas = resultado.seek_to_end.call_args.args
+        self.assertEqual([(p.topic, p.partition) for p in saltadas], [("wm.estado_red", 0)])
+
     def test_sin_metadatos_se_cierra_y_avisa(self):
         with patch("common.kafka_utils.KafkaAdminClient"), \
                 patch("common.kafka_utils.KafkaConsumer") as consumidor:

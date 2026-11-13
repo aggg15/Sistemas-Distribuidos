@@ -407,7 +407,8 @@ class Engine:
                 if self.productor is None:
                     self.productor = crear_productor(self.servidor_kafka)
                 consumidor = crear_consumidor(self.servidor_kafka,
-                                              [TOPIC_ORDENES, TOPIC_ESTADO_RED], grupo)
+                                              [TOPIC_ORDENES, TOPIC_ESTADO_RED], grupo,
+                                              solo_nuevos=[TOPIC_ESTADO_RED])
                 fin = fin_inicial(consumidor)
             except (KafkaError, OSError) as error:
                 LOG.warning("Kafka no disponible (%s). Reintento en %.1f s",
@@ -451,8 +452,9 @@ class Engine:
                 self.estacion.reenviar_pendientes()
             # Sin escuchar aún Kafka, no recibir ESTADO_RED no dice nada de CENTRAL.
             if self.kafka_listo.is_set() and self.estacion.latido.revisar():
-                LOG.warning("%s: no se admiten nuevos riegos (el riego en curso continúa)",
-                            MENSAJE_CAIDA, extra={"color": "rojo"})
+                continua = " (el riego en curso continúa)" if self.estacion.riego else ""
+                LOG.warning("%s: no se admiten nuevos riegos%s", MENSAJE_CAIDA, continua,
+                            extra={"color": "rojo"})
 
     def arrancar(self):
         for objetivo in (self.conectar_monitor, self.escuchar_ordenes, self.simular_riego):
