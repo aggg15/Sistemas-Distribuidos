@@ -17,6 +17,8 @@ class PruebasPanel(unittest.TestCase):
         temporal = tempfile.TemporaryDirectory()
         self.addCleanup(temporal.cleanup)
         self.central = CentralTCP(timeout=1, ruta_bd=f"{temporal.name}/wm.db")
+        self.central.bd.registrar_estacion("WS-01", "Parque Norte")
+        self.central.bd.registrar_estacion("WS-02", "Jardín")
         self.central.registro.registrar("WS-01", "Parque <b>Norte</b>", sesion=object())
         self.central.registro.registrar("WS-02", "Jardín", sesion=object())
         self.publicados = []

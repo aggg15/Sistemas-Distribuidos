@@ -170,6 +170,8 @@ def ejecutar(host, puerto_central, ws_id, ubicacion, parada, intervalo=2.0,
                 LOG.warning("La sesión anterior sigue activa; se reintentará el registro")
             else:
                 LOG.error("Registro rechazado: %s", error)
+                if str(error) == "WS_NO_REGISTRADA":
+                    LOG.error("La estación %s no está dada de alta en WM_Central", ws_id)
                 return 1
         except (OSError, ConexionCerrada, ErrorProtocolo) as error:
             if parada.is_set():

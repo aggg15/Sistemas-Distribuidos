@@ -253,6 +253,7 @@ class PruebasAvisosSalud(unittest.TestCase):
         temporal = tempfile.TemporaryDirectory()
         self.addCleanup(temporal.cleanup)
         central = CentralTCP(timeout=1, ruta_bd=f"{temporal.name}/wm.db")
+        central.bd.registrar_estacion("WS-01", "Parque")
         cliente, servidor = socket.socketpair()
         self.addCleanup(cliente.close)
         hilo_central = threading.Thread(target=central.atender, args=(servidor, "prueba"))

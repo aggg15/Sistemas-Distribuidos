@@ -24,6 +24,9 @@ segundos. Permanece abierto hasta Ctrl+C o SIGTERM. Si CENTRAL no está disponib
 al arrancar o la conexión se pierde, reintenta automáticamente. Al reiniciar
 CENTRAL, vuelve a saludar y registrarse con una conexión nueva.
 
+Si el ID no está dado de alta en CENTRAL, responde `KO#WS_NO_REGISTRADA` y el
+monitor termina con código **1**.
+
 Si se ejecuta un segundo monitor con el mismo ID, CENTRAL responde
 `KO#ID_EN_USO`. El segundo monitor termina con código **1**. Un monitor previamente
 registrado que está reconectando sí reintenta ese rechazo: CENTRAL podría estar

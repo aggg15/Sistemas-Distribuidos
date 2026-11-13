@@ -18,6 +18,9 @@ class PruebasCentral(unittest.TestCase):
         temporal = tempfile.TemporaryDirectory()
         self.addCleanup(temporal.cleanup)
         self.central = CentralTCP(timeout=0.5, ruta_bd=f"{temporal.name}/wm.db")
+        # Solo se autentican las estaciones dadas de alta en la BD.
+        for ws_id in ("WS-01", "WS-02", "WS-07"):
+            self.central.bd.registrar_estacion(ws_id, "Parque")
 
     def conectar(self, saludo=True):
         cliente, servidor = socket.socketpair()
@@ -66,6 +69,15 @@ class PruebasCentral(unittest.TestCase):
                     canal.recibir_trama()
                 resultado.result(timeout=1)
         self.assertEqual(self.central.registro.estado(), {})
+
+    def test_ws_no_registrada_es_rechazada_y_cierra(self):
+        _, canal, resultado = self.conectar()
+        self.assertEqual(canal.peticion("REGISTRO#WS-99#Parque"), "KO#WS_NO_REGISTRADA")
+        with self.assertRaises(ConexionCerrada):
+            canal.recibir_trama()
+        resultado.result(timeout=1)
+        self.assertNotIn("WS-99", self.central.registro.estado())
+        self.assertNotIn("WS-99", [e["id"] for e in self.central.bd.listar_estaciones()])
 
     def test_id_duplicado_no_desconecta_al_monitor_original(self):
         _, original, _ = self.conectar()

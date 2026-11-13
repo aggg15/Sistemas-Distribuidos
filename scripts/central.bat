@@ -7,7 +7,9 @@ rem
 rem   scripts\central.bat                       Kafka en localhost:9092, sockets en 9999
 rem   scripts\central.bat localhost:9092 9999
 rem
-rem El panel queda en http://localhost:8080. Los operarios se dan de alta con
+rem El panel queda en http://localhost:8080. Las estaciones y los operarios se
+rem dan de alta con
+rem   python scripts\gestionar_bd.py estacion WS-04 "River Park"
 rem   python scripts\gestionar_bd.py operario FO1 "Ana"
 setlocal
 set "KAFKA=%~1"

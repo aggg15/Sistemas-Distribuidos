@@ -65,12 +65,16 @@ class RegistroConexiones:
         self._lock = threading.Lock()
 
     def registrar(self, ws_id, ubicacion, sesion):
+        """Autentica una estación. Devuelve None si se acepta o el motivo del rechazo."""
         with self._lock:
             anterior = self._estaciones.get(ws_id)
             if anterior is not None and anterior.sesion is not None:
-                return False
+                return "ID_EN_USO"
+            # Solo se aceptan estaciones dadas de alta en la BD (gestionar_bd.py).
             # El OK se enviará únicamente después de confirmar la transacción.
-            fila = self.bd.registrar_estacion(ws_id, ubicacion)
+            fila = self.bd.conectar_estacion(ws_id, ubicacion)
+            if fila is None:
+                return "WS_NO_REGISTRADA"
             self._estaciones[ws_id] = Estacion(
                 ubicacion, sesion, bloqueada=bool(fila["bloqueada"]),
                 ultima_conexion=fila["ultima_conexion"],
@@ -78,7 +82,7 @@ class RegistroConexiones:
                 # para que el hilo que lo está cerrando lo encuentre.
                 riego=anterior.riego if anterior is not None else None,
             )
-            return True
+            return None
 
     def desconectar(self, ws_id, sesion):
         with self._lock:
@@ -176,12 +180,13 @@ class SesionMonitor:
             if not campo_valido(ws_id) or not campo_valido(ubicacion):
                 return "KO#ID o ubicacion no validos"
             try:
-                registrado = self.registro.registrar(ws_id, ubicacion, self)
+                rechazo = self.registro.registrar(ws_id, ubicacion, self)
             except sqlite3.Error:
                 LOG.exception("No se pudo guardar el registro de %s", ws_id)
                 return "KO#ERROR_BD"
-            if not registrado:
-                return "KO#ID_EN_USO"
+            if rechazo is not None:
+                LOG.warning("Registro denegado: %s | %s (%s)", ws_id, ubicacion, rechazo)
+                return f"KO#{rechazo}"
             self.ws_id = ws_id
             LOG.info("Monitor conectado: %s | %s", ws_id, ubicacion, extra={"color": "verde"})
             return f"OK#{ws_id}"

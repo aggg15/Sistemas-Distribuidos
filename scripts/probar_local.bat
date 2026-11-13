@@ -17,7 +17,10 @@ if errorlevel 1 (
     echo Kafka ya estaba en marcha.
 )
 
-rem Operarios de prueba (si ya existen, solo se actualiza el nombre).
+rem Estaciones y operarios de prueba: CENTRAL solo acepta los dados de alta
+rem (si ya existen, solo se actualiza la ubicación o el nombre).
+python scripts\gestionar_bd.py estacion WS-04 "River Park" >nul
+python scripts\gestionar_bd.py estacion WS-05 "Central Park" >nul
 python scripts\gestionar_bd.py operario FO1 "Ana" >nul
 python scripts\gestionar_bd.py operario FO2 "Luis" >nul
 

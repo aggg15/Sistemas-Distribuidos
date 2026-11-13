@@ -172,13 +172,17 @@ Tras cada `git push`, cuando Actions haya subido la imagen nueva, se actualizan
 las dos partes: EC2 con `bash deploy/arrancar_aws.sh` y ECS con **Actualizar →
 Forzar nueva implementación**, como en el tutorial.
 
-## 6. Dar de alta a los operarios
+## 6. Dar de alta las estaciones y los operarios
 
-Las solicitudes de un operario que no está en la base de datos se deniegan:
+CENTRAL rechaza las estaciones (`KO#WS_NO_REGISTRADA`) y las solicitudes de
+operarios que no están en la base de datos. `bash scripts/central.sh` da de alta
+el caso base (WS-04, WS-05, WS-07, WS-11 y FO1 a FO4); para añadir más:
 
 ```bash
-docker compose exec central python scripts/gestionar_bd.py operario FO1 "Ana"
-docker compose exec central python scripts/gestionar_bd.py operarios
+sudo docker compose exec central python scripts/gestionar_bd.py estacion WS-06 "El Retiro"
+sudo docker compose exec central python scripts/gestionar_bd.py operario FO5 "Nombre"
+sudo docker compose exec central python scripts/gestionar_bd.py estaciones
+sudo docker compose exec central python scripts/gestionar_bd.py operarios
 ```
 
 La base de datos está en el volumen `wm-datos`: se conserva al actualizar o

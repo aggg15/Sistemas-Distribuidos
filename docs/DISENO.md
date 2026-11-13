@@ -120,7 +120,7 @@ El Monitor es el cliente y mantiene la conexión abierta.
 
 | Petición del Monitor | Respuesta de CENTRAL |
 | --- | --- |
-| `REGISTRO#<ws_id>#<ubicacion>` | `OK#<ws_id>` o `KO#<motivo>` (ID activo duplicado: `KO#ID_EN_USO`) |
+| `REGISTRO#<ws_id>#<ubicacion>` | `OK#<ws_id>` o `KO#<motivo>` (estación sin alta: `KO#WS_NO_REGISTRADA`; ID activo duplicado: `KO#ID_EN_USO`) |
 | `AVERIA#<ws_id>` | `OK` |
 | `RESUELTA#<ws_id>` | `OK` |
 | `PING#<ws_id>` (cada 2 s) | `OK` |
@@ -240,8 +240,11 @@ CREATE TABLE riegos (
 );
 ```
 
-- Una estación con ID nuevo se da de alta al registrarse. Si ya existe, se
-  actualiza su ubicación y fecha de conexión, conservando su bloqueo.
+- Las estaciones las da de alta CENTRAL antes de usarlas
+  (`scripts/gestionar_bd.py estacion WS-04 "River Park"`), como pide el
+  enunciado. Al autenticarse un Monitor, si su ID no está en la tabla se
+  responde `KO#WS_NO_REGISTRADA` y no se guarda nada; si está, se actualizan su
+  ubicación y su fecha de conexión, conservando su bloqueo.
 - Los operarios se administran con `scripts/gestionar_bd.py`. La consulta de
   existencia está implementada; la denegación de peticiones desconocidas se
   conectará al implementar FO y la lógica de riego.

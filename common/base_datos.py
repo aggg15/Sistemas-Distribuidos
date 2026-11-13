@@ -67,6 +67,8 @@ class BaseDatos:
             conexion.close()
 
     def registrar_estacion(self, ws_id, ubicacion):
+        """Alta de una estación en la red (o cambio de su ubicación). La hace el
+        administrador con scripts/gestionar_bd.py, no el Monitor al conectarse."""
         if not campo_valido(ws_id) or not campo_valido(ubicacion):
             raise ValueError("ID o ubicación de estación no válidos")
         instante = _ahora()
@@ -80,6 +82,20 @@ class BaseDatos:
                        ultima_conexion=excluded.ultima_conexion""",
                 (ws_id, ubicacion, instante),
             )
+            return dict(conexion.execute(
+                "SELECT * FROM estaciones WHERE id=?", (ws_id,)
+            ).fetchone())
+
+    def conectar_estacion(self, ws_id, ubicacion):
+        """El Monitor de una estación dada de alta se ha autenticado: se guardan
+        su ubicación y la hora. Devuelve la fila, o None si no está dada de alta."""
+        with self._conexion() as conexion:
+            cursor = conexion.execute(
+                "UPDATE estaciones SET ubicacion=?, ultima_conexion=? WHERE id=?",
+                (ubicacion, _ahora(), ws_id),
+            )
+            if cursor.rowcount == 0:
+                return None
             return dict(conexion.execute(
                 "SELECT * FROM estaciones WHERE id=?", (ws_id,)
             ).fetchone())

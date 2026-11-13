@@ -67,7 +67,17 @@ class PruebasPersistencia(unittest.TestCase):
                           range(18)))
         self.assertEqual(len(self.bd.listar_estaciones()), 18)
 
+    def test_ws_no_registrada_no_se_autentica_ni_se_guarda(self):
+        registro = RegistroConexiones(self.bd)
+        sesion = SesionMonitor(registro)
+        with self.assertLogs("WM_Central", level="WARNING"):
+            self.assertEqual(sesion.procesar("REGISTRO#WS-99#Parque"), "KO#WS_NO_REGISTRADA")
+        self.assertIsNone(sesion.ws_id)
+        self.assertEqual(registro.estado(), {})
+        self.assertEqual(self.bd.listar_estaciones(), [])
+
     def test_reinicio_recupera_datos_pero_no_sesion_ni_salud(self):
+        self.bd.registrar_estacion("WS-01", "Parque")
         primera = RegistroConexiones(self.bd)
         sesion = SesionMonitor(primera)
         self.assertEqual(sesion.procesar("REGISTRO#WS-01#Parque"), "OK#WS-01")
@@ -84,6 +94,7 @@ class PruebasPersistencia(unittest.TestCase):
         self.assertEqual(len(self.bd.listar_estaciones()), 1)
 
     def test_registro_duplicado_no_modifica_la_fila_persistente(self):
+        self.bd.registrar_estacion("WS-01", "Parque")
         registro = RegistroConexiones(self.bd)
         primera = SesionMonitor(registro)
         primera.procesar("REGISTRO#WS-01#Parque")
@@ -96,7 +107,7 @@ class PruebasPersistencia(unittest.TestCase):
     def test_error_al_guardar_no_confirma_ni_crea_una_sesion(self):
         registro = RegistroConexiones(self.bd)
         sesion = SesionMonitor(registro)
-        with patch.object(self.bd, "registrar_estacion", side_effect=sqlite3.OperationalError("locked")), \
+        with patch.object(self.bd, "conectar_estacion", side_effect=sqlite3.OperationalError("locked")), \
                 self.assertLogs("WM_Central", level="ERROR"):
             self.assertEqual(sesion.procesar("REGISTRO#WS-01#Parque"), "KO#ERROR_BD")
         self.assertIsNone(sesion.ws_id)
@@ -132,6 +143,10 @@ class PruebasPersistencia(unittest.TestCase):
         self.assertIn('"id": "FO-01"', ejecutar("operarios").stdout)
         self.assertEqual(ejecutar("operario", "", "Nombre").returncode, 1)
         self.assertTrue(self.bd.operario_existe("FO-01"))
+        # Alta de estaciones: el ID se guarda en mayúsculas, como lo envía el Monitor.
+        self.assertEqual(ejecutar("estacion", "ws-04", "River Park").returncode, 0)
+        self.assertIn('"id": "WS-04"', ejecutar("estaciones").stdout)
+        self.assertIsNotNone(self.bd.conectar_estacion("WS-04", "River Park"))
 
 
 if __name__ == "__main__":

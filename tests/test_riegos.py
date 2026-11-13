@@ -53,6 +53,8 @@ class PruebasCicloDeRiego(unittest.TestCase):
         self.addCleanup(temporal.cleanup)
         self.bd = BaseDatos(f"{temporal.name}/wm.db")
         self.bd.guardar_operario("FO1", "Ana")
+        self.bd.registrar_estacion("WS-01", "Parque")
+        self.bd.registrar_estacion("WS-02", "Jardín")
         self.registro = RegistroConexiones(self.bd)
         self.registro.registrar("WS-01", "Parque", sesion=object())
         self.registro.registrar("WS-02", "Jardín", sesion=object())
@@ -275,6 +277,7 @@ class PruebasAveriaDesdeElMonitor(unittest.TestCase):
         temporal = tempfile.TemporaryDirectory()
         self.addCleanup(temporal.cleanup)
         central = CentralTCP(timeout=1, ruta_bd=f"{temporal.name}/wm.db")
+        central.bd.registrar_estacion("WS-01", "Parque")
         bus = Bus()
         central.gestor.publicar = bus.publicar
         engine = EstacionSimulada(bus.publicar, medir_caudal=lambda: 12.0)

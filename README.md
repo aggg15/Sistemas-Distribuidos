@@ -18,7 +18,7 @@ laboratorio.
 | `WM_FO/WM_FO.py` | Aplicación del operario: solicitudes manuales o desde fichero. |
 | `WM_FO/peticiones_ejemplo.txt` | Fichero de peticiones de ejemplo (`ws_id;segundos`). |
 | `common/` | Código compartido: protocolo de sockets, Kafka, SQLite, validaciones. |
-| `scripts/gestionar_bd.py` | Alta de operarios y consulta de la base de datos. |
+| `scripts/gestionar_bd.py` | Alta de estaciones y operarios y consulta de la base de datos. |
 | `tests/` | Pruebas automáticas (`python -m unittest`). |
 | `deploy/`, `Dockerfile`, `docker-compose.yml` | Contenedores y despliegue en AWS. |
 | `docs/` | Diseño, protocolo, persistencia y guía de despliegue. |
@@ -45,7 +45,9 @@ Cada comando en su propia terminal. `KAFKA` es `ip:puerto` del broker (en AWS,
 # WM_Central (en AWS se arranca con Docker: docs/DESPLIEGUE_AWS.md)
 python WM_Central/WM_Central.py 9999 KAFKA
 
-# Alta de un operario en la base de datos de CENTRAL
+# Alta de una estación y de un operario en la base de datos de CENTRAL
+# (CENTRAL rechaza los que no estén dados de alta)
+python scripts/gestionar_bd.py estacion WS-04 "River Park"
 python scripts/gestionar_bd.py operario FO1 "Ana"
 
 # Una estación: Monitor y Engine en el mismo equipo

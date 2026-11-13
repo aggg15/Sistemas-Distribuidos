@@ -17,9 +17,11 @@ CENTRAL carga las estaciones conocidas como **DESCONECTADA** y lo indica en los
 logs. Debe conocer de nuevo su conexión y salud. La conexión del Monitor todavía
 no significa que la estación esté disponible para regar: falta incorporar Engine.
 
-Un ID nuevo se da de alta en su primer registro válido. Si ya existe y no tiene
-otra sesión activa, se actualizan ubicación y última conexión sin duplicar la
-fila ni borrar su bloqueo. Un registro duplicado activo no modifica la base.
+Las estaciones se dan de alta con `scripts/gestionar_bd.py estacion ID
+"Ubicación"`. Un Monitor cuyo ID no está dado de alta recibe
+`KO#WS_NO_REGISTRADA` y no se guarda nada. Si el ID existe y no tiene otra
+sesión activa, se actualizan ubicación y última conexión sin duplicar la fila
+ni borrar su bloqueo. Un registro duplicado activo no modifica la base.
 CENTRAL envía `OK#<ID>` después de confirmar la transacción SQLite. Si falla la
 escritura, responde `KO#ERROR_BD` y no activa la sesión. Los errores al abrir la
 base impiden el arranque y producen código 1.

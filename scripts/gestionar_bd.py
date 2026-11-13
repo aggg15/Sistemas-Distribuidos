@@ -1,4 +1,4 @@
-"""Altas de operarios y consulta de los datos persistentes de CENTRAL."""
+"""Altas de operarios y estaciones y consulta de los datos persistentes de CENTRAL."""
 
 import argparse
 import json
@@ -20,6 +20,10 @@ def main(argv=None):
     alta = acciones.add_parser("operario", help="Crear o actualizar un operario")
     alta.add_argument("id")
     alta.add_argument("nombre")
+    # Solo las estaciones dadas de alta pueden autenticarse en CENTRAL.
+    estacion = acciones.add_parser("estacion", help="Dar de alta una estación o cambiar su ubicación")
+    estacion.add_argument("id")
+    estacion.add_argument("ubicacion")
     for accion in ("operarios", "estaciones", "riegos"):
         acciones.add_parser(accion, help=f"Listar {accion} guardados")
     args = parser.parse_args(argv)
@@ -28,6 +32,10 @@ def main(argv=None):
         if args.accion == "operario":
             bd.guardar_operario(args.id, args.nombre)
             print(f"Operario guardado: {args.id}")
+        elif args.accion == "estacion":
+            # Mismo criterio que el Monitor: los IDs de estación en mayúsculas.
+            bd.registrar_estacion(args.id.upper(), args.ubicacion)
+            print(f"Estación dada de alta: {args.id.upper()} | {args.ubicacion}")
         else:
             listar = {"operarios": bd.listar_operarios,
                       "estaciones": bd.listar_estaciones, "riegos": bd.listar_riegos}
