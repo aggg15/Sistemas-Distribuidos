@@ -17,5 +17,11 @@ data/
 *.sqlite
 *.sqlite-*
 
+# Certificados, claves privadas y credenciales de Release 2 (nunca en Git).
+certs/
+*.pem
+*.key
+*.cred
+
 # Metadatos del sistema.
 .DS_Store
