@@ -55,6 +55,21 @@ Issues afectados.
   done
   ```
 
+### 2026-11-17 · Issue #24 · Claude Code (Claude Opus 5.5)
+
+**Prompt:** «Por cual deberiamos empezar?» (respuesta: #24, luego #1 y #2) y, a
+continuación, «Hazlo».
+
+**Resultado:** PR #46. Job `tests` (Python 3.9 y 3.12) en
+`.github/workflows/deploy.yml`, que se ejecuta en push a `main` y en pull
+requests; el job `build` pasa a depender de él y solo publica en push a `main`.
+Se actualizaron `README.md` y `docs/DESPLIEGUE_AWS.md`. Verificado en GitHub
+Actions: en verde con el cambio, en rojo con una prueba rota a propósito
+(commit revertido en el mismo PR) y de nuevo en verde tras el revert. `build`
+aparece como *skipped* en los PR.
+
+**Revisión humana:** pendiente (revisar el PR #46 y fusionarlo con *squash*).
+
 ## Prompts
 
 ### Prompt 1 · Planificación de Release 2 (2026-11-17)
