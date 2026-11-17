@@ -70,6 +70,26 @@ aparece como *skipped* en los PR.
 
 **Revisión humana:** pendiente (revisar el PR #46 y fusionarlo con *squash*).
 
+### 2026-11-17 · Issues #1 y #2 · Claude Code (Claude Opus 5.5)
+
+**Prompt:** «Haz lo que tengas que hacer» (tras proponer fusionar #45 y #46 y
+continuar con #1 y #2).
+
+**Resultado:** la IA intentó fusionar #46 y el permiso fue denegado, así que
+#45 y #46 siguen abiertos. Se implementaron:
+
+- PR #47 (#1): esquema de Release 2 con migración desde R1, tabla `auditoria`,
+  métodos de registro, claves, alertas y auditoría; listados sin secretos;
+  20 pruebas nuevas.
+- PR #48 (#2): `common/seguridad.py` (PBKDF2, Fernet, contextos TLS),
+  `common/certificados.py` y `scripts/generar_certificados.py` (en Python en
+  lugar de openssl), `cryptography==50.0.2`, exclusiones en `.gitignore` y
+  `.dockerignore`; 21 pruebas nuevas.
+
+Batería completa en verde con Python 3.14 y 3.9.6 en ambas ramas.
+
+**Revisión humana:** pendiente (PR #47 y #48).
+
 ## Prompts
 
 ### Prompt 1 · Planificación de Release 2 (2026-11-17)
