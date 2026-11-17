@@ -26,6 +26,9 @@ def main(argv=None):
     estacion.add_argument("ubicacion")
     for accion in ("operarios", "estaciones", "riegos"):
         acciones.add_parser(accion, help=f"Listar {accion} guardados")
+    # Las estaciones se listan sin credencial ni clave: solo si las tienen.
+    auditoria = acciones.add_parser("auditoria", help="Últimos eventos de auditoría")
+    auditoria.add_argument("--limite", type=int, default=50)
     args = parser.parse_args(argv)
     try:
         bd = BaseDatos(args.db)
@@ -38,10 +41,12 @@ def main(argv=None):
             print(f"Estación dada de alta: {args.id.upper()} | {args.ubicacion}")
         else:
             listar = {"operarios": bd.listar_operarios,
-                      "estaciones": bd.listar_estaciones, "riegos": bd.listar_riegos}
+                      "estaciones": bd.listar_estaciones, "riegos": bd.listar_riegos,
+                      "auditoria": lambda: bd.listar_auditoria(limite=args.limite)}
             datos = listar[args.accion]()
             for fila in datos:
-                for campo in ("ultima_conexion", "inicio", "fin"):
+                for campo in ("ultima_conexion", "inicio", "fin", "fecha_alta", "fecha_baja",
+                              "clave_emitida", "fecha"):
                     if fila.get(campo) is not None:
                         fila[campo] = fecha_madrid(fila[campo])
             print(json.dumps(datos, ensure_ascii=False, indent=2))
