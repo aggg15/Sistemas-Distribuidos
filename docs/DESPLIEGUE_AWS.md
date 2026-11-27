@@ -43,10 +43,11 @@ tutorial.
    - `DOCKER_PASSWORD`: el token del paso anterior.
 
 El fichero [.github/workflows/deploy.yml](../.github/workflows/deploy.yml) se
-es el del tutorial: en cada `git push` a `main` construye la imagen con el
-`Dockerfile` y la sube como `usuario/practica-aws:latest`. El resultado se ve
-en la pestaña **Actions** de GitHub. Las pruebas se lanzan antes en local con
-`python -m unittest`.
+basa en el del tutorial: en cada `git push` a `main` construye la imagen con el
+`Dockerfile` y la sube como `usuario/practica-aws:latest`. Antes, el job
+`tests` ejecuta `python -m unittest` con Python 3.9 y 3.12; si falla, la imagen
+no se publica. Las pruebas también se ejecutan en cada pull request (sin
+publicar nada). El resultado se ve en la pestaña **Actions** de GitHub.
 
 ## 3. Crear la instancia EC2
 
@@ -221,7 +222,8 @@ distintos (`ws05-monitor`, `ws05-engine`, puerto 9101...).
 
 | Síntoma | Causa probable |
 | --- | --- |
-| Actions en rojo | Secretos de Docker Hub mal escritos o token sin permiso de escritura. |
+| Actions en rojo en el job `tests` | Alguna prueba falla: verlo en el registro del job y reproducirlo en local con `python -m unittest -v`. |
+| Actions en rojo en el job `build` | Secretos de Docker Hub mal escritos o token sin permiso de escritura. |
 | `pull access denied` en la instancia | `WM_CENTRAL_IMAGE` mal escrita o repositorio de Docker Hub privado. |
 | La URL de ECS muestra "Sin conexión con WM_Central" | `WM_CENTRAL_REMOTA` mal escrita, falta la regla del puerto 8080 o la IP de EC2 ha cambiado. |
 | La URL de ECS muestra un panel vacío con "Sin Kafka" | Falta la variable `WM_CENTRAL_REMOTA`: ECS está ejecutando una CENTRAL completa aparte. |
