@@ -5,10 +5,12 @@ from datetime import datetime, timezone
 import json
 from pathlib import Path
 import sqlite3
+import time
 
 from common.configuracion import campo_valido
 
 RUTA_BD = "data/wm.db"
+INTENTOS_ARRANQUE = 20
 
 
 class EstacionYaRegistrada(Exception):
@@ -91,10 +93,28 @@ class BaseDatos:
             raise ValueError("Usa un fichero SQLite: las conexiones son independientes")
         self.ruta = Path(ruta)
         self.ruta.parent.mkdir(parents=True, exist_ok=True)
+        self._al_arrancar(self._crear_esquema)
+        self._al_arrancar(self._migrar)
+
+    def _al_arrancar(self, paso):
+        """Ejecuta un paso de la inicialización reintentando si la BD está bloqueada.
+
+        Cuando CENTRAL y WM_Registry abren a la vez el mismo fichero, pasar a WAL
+        o crear el esquema puede encontrar la BD bloqueada más tiempo del que
+        espera el timeout de cada conexión. Los pasos son idempotentes.
+        """
+        for intento in range(1, INTENTOS_ARRANQUE + 1):
+            try:
+                return paso()
+            except sqlite3.OperationalError as error:
+                if "locked" not in str(error) or intento == INTENTOS_ARRANQUE:
+                    raise
+                time.sleep(0.05 * intento)
+
+    def _crear_esquema(self):
         with self._conexion() as conexion:
             conexion.execute("PRAGMA journal_mode=WAL")
             conexion.executescript(ESQUEMA)
-        self._migrar()
 
     def _migrar(self):
         """Añade las columnas de Release 2 que falten, sin tocar los datos.
