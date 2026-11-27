@@ -49,18 +49,36 @@ compose() {
     fi
 }
 
+# Certificado TLS de los sockets de CENTRAL para la IP actual. La CA de
+# certs/ se reutiliza: los laboratorios no tienen que volver a copiar ca.pem
+# aunque cambie la IP. Se genera con la propia imagen (no hace falta Python aquí).
+certificados() {
+    mkdir -p certs
+    local imagen=${WM_CENTRAL_IMAGE:-wm-central:local}
+    local orden=(docker run --rm -v "$PWD/certs:/app/certs" "$imagen"
+                 python scripts/generar_certificados.py "$IP_PUBLICA" --carpeta /app/certs)
+    if docker info >/dev/null 2>&1; then "${orden[@]}"; else sudo "${orden[@]}"; fi
+}
+
 if [ -n "${WM_CENTRAL_IMAGE:-}" ]; then
     echo "Descargando $WM_CENTRAL_IMAGE de Docker Hub..."
     compose pull central
-    compose up -d --no-build central kafka
+    certificados
+    compose up -d --no-build kafka
+    # Se recrea para que cargue el certificado recién emitido.
+    compose up -d --no-build --no-deps --force-recreate central
 else
     echo "WM_CENTRAL_IMAGE no definida: se construye la imagen en esta máquina..."
-    compose up -d --build central kafka
+    compose build central
+    certificados
+    compose up -d kafka
+    compose up -d --no-deps --force-recreate central
 fi
 
 compose ps
 echo
 echo "Listo. Desde los laboratorios:"
-echo "  CENTRAL (sockets): $IP_PUBLICA:9999"
+echo "  CENTRAL (sockets TLS): $IP_PUBLICA:9999"
+echo "  CA para los Monitores: $PWD/certs/ca.pem  (cópiala a certs/ca.pem en cada PC)"
 echo "  Kafka:             $IP_PUBLICA:9092"
 echo "  Panel web:         http://$IP_PUBLICA:8080"

@@ -25,8 +25,13 @@ services:
       WM_DB_PATH: /app/data/wm.db
       # Dentro de la red de Docker, Kafka se alcanza por su listener INTERNAL.
       WM_KAFKA_SERVER: ${WM_KAFKA_SERVER:-kafka:29092}
+      # Sockets con los Monitores por TLS con certs/servidor.{pem,key}. Generar antes:
+      #   python scripts/generar_certificados.py IP_PUBLICA
+      # WM_SIN_TLS=1 los deja en claro (solo pruebas, como en Release 1).
+      WM_SIN_TLS: ${WM_SIN_TLS:-}
     volumes:
       - wm-datos:/app/data
+      - ./certs:/app/certs:ro
     stop_grace_period: 10s
     # Vuelve a arrancar sola si se cae o si se reinicia la máquina (AWS).
     restart: unless-stopped
@@ -45,6 +50,11 @@ services:
       WM_SOCKET_TIMEOUT: ${WM_MONITOR_TIMEOUT:-3}
       WM_PING_INTERVAL: ${WM_PING_INTERVAL:-2}
       WM_RECONNECT_DELAY: ${WM_RECONNECT_DELAY:-2}
+      WM_SIN_TLS: ${WM_SIN_TLS:-}
+      # El certificado incluye localhost y la IP pública, no el nombre "central".
+      WM_TLS_SIN_NOMBRE: "1"
+    volumes:
+      - ./certs:/app/certs:ro
     stop_grace_period: 10s
 
   kafka:

@@ -13,7 +13,9 @@ COPY WM_Central/ ./WM_Central/
 COPY WM_WS/ ./WM_WS/
 COPY WM_FO/ ./WM_FO/
 COPY scripts/gestionar_bd.py ./scripts/gestionar_bd.py
+# Para generar los certificados TLS en el servidor sin instalar nada (deploy/arrancar_aws.sh).
+COPY scripts/generar_certificados.py ./scripts/generar_certificados.py
 
-# 9999: sockets de los Monitores. 8080: panel web.
+# 9999: sockets de los Monitores (TLS, certificados en /app/certs). 8080: panel web.
 EXPOSE 9999 8080
 CMD ["python", "WM_Central/WM_Central.py"]
