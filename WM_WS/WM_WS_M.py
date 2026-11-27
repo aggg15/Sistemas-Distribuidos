@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import signal
 import socket
+import ssl
 import sys
 import threading
 import time
@@ -16,8 +17,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from common import consola  # noqa: E402
 from common.configuracion import campo_valido, positivo, puerto  # noqa: E402
 from common.protocolo import Canal, ConexionCerrada, ErrorProtocolo, empaquetar  # noqa: E402
+from common.seguridad import contexto_tls_cliente  # noqa: E402
 
 LOG = logging.getLogger("WM_WS_M")
+
+# CA del proyecto con la que se verifica el certificado de CENTRAL.
+CA_TLS = str(Path(__file__).resolve().parent.parent / "certs" / "ca.pem")
 
 # Cada cuánto se revisa si la salud ha cambiado mientras se espera el próximo PING.
 INTERVALO_REVISION = 0.2
@@ -150,8 +155,26 @@ def vigilar_engine(servidor, ws_id, salud, parada, registro_confirmado,
                 salud.actualizar(False)
 
 
+def conectar(host, puerto_central, timeout, contexto_tls=None):
+    """Abre el socket con CENTRAL y, si hay contexto, hace el handshake TLS.
+
+    El cliente verifica el certificado de CENTRAL con la CA del proyecto y que
+    sea para ese host: sin esa comprobación (como el _create_unverified_context
+    del ejemplo de la asignatura) un MITM podría hacerse pasar por CENTRAL.
+    """
+    conexion = socket.create_connection((host, puerto_central), timeout=timeout)
+    if contexto_tls is None:
+        return conexion
+    try:
+        return contexto_tls.wrap_socket(conexion, server_hostname=host)
+    except BaseException:
+        conexion.close()
+        raise
+
+
 def ejecutar(host, puerto_central, ws_id, ubicacion, parada, intervalo=2.0,
-             timeout=3.0, reintento=2.0, registro_confirmado=None, salud=None):
+             timeout=3.0, reintento=2.0, registro_confirmado=None, salud=None,
+             contexto_tls=None):
     if registro_confirmado is None:
         registro_confirmado = threading.Event()
     # Mientras CENTRAL no responde se avisa una sola vez, no en cada reintento.
@@ -160,9 +183,15 @@ def ejecutar(host, puerto_central, ws_id, ubicacion, parada, intervalo=2.0,
         try:
             if not sin_central.is_set():
                 LOG.info("Conectando con WM_Central en %s:%s", host, puerto_central)
-            with socket.create_connection((host, puerto_central), timeout=timeout) as conexion:
+            with conectar(host, puerto_central, timeout, contexto_tls) as conexion:
                 mantener_sesion(conexion, ws_id, ubicacion, parada, intervalo, timeout,
                                 registro_confirmado, salud, al_registrar=sin_central.clear)
+        except ssl.SSLCertVerificationError as error:
+            # Reintentar no lo arregla: la CA o la IP del certificado no coinciden.
+            LOG.error("El certificado de WM_Central no es de confianza: %s. Comprueba "
+                      "que certs/ca.pem es la CA del servidor y que el certificado "
+                      "incluye la IP %s", error.verify_message or error, host)
+            return 1
         except RegistroRechazado as error:
             if str(error) == "ID_EN_USO" and registro_confirmado.is_set():
                 # Tras un corte de red, CENTRAL puede conservar la sesión vieja
@@ -178,14 +207,42 @@ def ejecutar(host, puerto_central, ws_id, ubicacion, parada, intervalo=2.0,
                 pass
             elif not sin_central.is_set():
                 sin_central.set()
-                LOG.warning("Imposible conectar con WM_Central (%s). Se reintenta cada %.0f s",
-                            str(error) or "EOT recibido", reintento, extra={"color": "rojo"})
+                if isinstance(error, ssl.SSLError):
+                    pista = " ¿CENTRAL tiene TLS activado?"
+                elif contexto_tls is None and isinstance(error, socket.timeout):
+                    pista = " ¿CENTRAL exige TLS? Quita --sin-tls y usa su certs/ca.pem."
+                else:
+                    pista = ""
+                LOG.warning("Imposible conectar con WM_Central (%s).%s Se reintenta cada %.0f s",
+                            str(error) or "EOT recibido", pista, reintento,
+                            extra={"color": "rojo"})
             else:
                 LOG.debug("WM_Central sigue sin responder: %s", error)
         if not parada.is_set():
             parada.wait(reintento)
     LOG.info("Monitor detenido")
     return 0
+
+
+def cargar_tls(parser, args):
+    """Contexto TLS del Monitor, o None solo con --sin-tls.
+
+    Sin la CA no se puede comprobar que se habla con la CENTRAL real: el
+    Monitor no arranca en lugar de enviar su identificación en claro.
+    """
+    if args.sin_tls:
+        LOG.warning("TLS desactivado (--sin-tls): la sesión con CENTRAL irá en claro")
+        return None
+    ca = args.ca or CA_TLS
+    if not Path(ca).is_file():
+        parser.exit(1, f"Falta la CA {ca}: copia certs/ca.pem desde la máquina de "
+                       "CENTRAL o, solo para pruebas, usa --sin-tls\n")
+    try:
+        contexto = contexto_tls_cliente(ca, comprobar_nombre=not args.sin_comprobar_nombre)
+    except (ssl.SSLError, OSError) as error:
+        parser.exit(1, f"CA no válida ({ca}): {error}\n")
+    LOG.info("TLS con WM_Central (CA %s)", ca)
+    return contexto
 
 
 def main(argv=None):
@@ -206,6 +263,15 @@ def main(argv=None):
                         help="Puerto donde espera al WM_WS_E. Sin él no se vigila el Engine")
     parser.add_argument("--intervalo-check", type=positivo,
                         default=os.getenv("WM_CHECK_INTERVAL", "1"))
+    parser.add_argument("--ca", default=os.getenv("WM_CA_CERT"),
+                        help="CA para verificar a CENTRAL (por defecto certs/ca.pem)")
+    parser.add_argument("--sin-tls", action="store_true",
+                        default=os.getenv("WM_SIN_TLS", "") == "1",
+                        help="Conectar en claro, como en Release 1 (solo pruebas)")
+    parser.add_argument("--sin-comprobar-nombre", action="store_true",
+                        default=os.getenv("WM_TLS_SIN_NOMBRE", "") == "1",
+                        help="No comprobar que el certificado es para ese host/IP "
+                             "(certificado autofirmado sin IP, solo pruebas)")
     parser.add_argument("--verbose", action="store_true",
                         help="Mostrar también cada latido y cada reintento")
     args = parser.parse_args(argv)
@@ -220,6 +286,7 @@ def main(argv=None):
     except ValueError as error:
         parser.error(str(error))
     consola.configurar(logging.DEBUG if args.verbose else logging.INFO)
+    contexto_tls = cargar_tls(parser, args)
     parada = threading.Event()
     for senal in (signal.SIGINT, signal.SIGTERM):
         signal.signal(senal, lambda *_: parada.set())
@@ -241,7 +308,7 @@ def main(argv=None):
         ).start()
     return ejecutar(args.host, args.puerto, args.ws_id, args.ubicacion, parada,
                     args.intervalo_ping, args.timeout, args.reintento,
-                    registro_confirmado, salud)
+                    registro_confirmado, salud, contexto_tls)
 
 
 if __name__ == "__main__":

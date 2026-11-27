@@ -197,12 +197,25 @@ ni kafka-python en los PCs. Primero, en cada PC:
 
 ```bash
 docker pull USUARIO_DOCKERHUB/practica-aws:latest
+mkdir -p certs
 ```
+
+Y se copia en `certs/ca.pem` el contenido de `cat certs/ca.pem` de la
+instancia (desde EC2 Instance Connect basta con copiar y pegar el texto, de
+`-----BEGIN CERTIFICATE-----` a `-----END CERTIFICATE-----`), o con
+`scp -i CLAVE.pem ubuntu@IP_AWS:Sistemas-Distribuidos/certs/ca.pem certs/`.
+
+Desde Release 2 la sesión Monitor ↔ CENTRAL va por **TLS**
+(`docs/release2/SOCKETS_SEGUROS.md`). `deploy/arrancar_aws.sh` genera en la
+instancia `certs/ca.pem` y el certificado de CENTRAL para su IP pública. Los
+Monitores necesitan **solo `ca.pem`**, que es pública: nunca se copian
+`ca.key` ni `servidor.key`. Si la IP cambia, basta con volver a ejecutar
+`arrancar_aws.sh`: la CA se conserva y no hay que volver a copiar `ca.pem`.
 
 Cada módulo, en su propia terminal (`-it` para poder usar su menú):
 
 ```bash
-docker run --rm -it --network host --name ws04-monitor USUARIO_DOCKERHUB/practica-aws python WM_WS/WM_WS_M.py IP_AWS 9999 WS-04 "River Park" --puerto-engine 9100
+docker run --rm -it --network host --name ws04-monitor -v "$PWD/certs:/app/certs:ro" USUARIO_DOCKERHUB/practica-aws python WM_WS/WM_WS_M.py IP_AWS 9999 WS-04 "River Park" --puerto-engine 9100
 docker run --rm -it --network host --name ws04-engine -v wm-engine:/app/data USUARIO_DOCKERHUB/practica-aws python WM_WS/WM_WS_E.py IP_AWS:9092 localhost 9100
 docker run --rm -it --network host --name fo1 USUARIO_DOCKERHUB/practica-aws python WM_FO/WM_FO.py IP_AWS:9092 FO1
 ```
@@ -213,6 +226,8 @@ docker run --rm -it --network host --name fo1 USUARIO_DOCKERHUB/practica-aws pyt
   se vuelve a lanzar, lo recupera.
 - `--name`: permite simular un *crash* desde otra terminal, por ejemplo
   `docker kill ws04-engine`.
+- `-v "$PWD/certs:/app/certs:ro"`: el Monitor verifica a CENTRAL con
+  `certs/ca.pem`. `scripts/monitor.sh` y `monitor.bat` lo montan solos.
 
 Monitor y Engine de una misma estación van en el mismo PC. Cada estación
 necesita su propio ID, su propio puerto de Engine y nombres de contenedor
@@ -228,6 +243,9 @@ distintos (`ws05-monitor`, `ws05-engine`, puerto 9101...).
 | La URL de ECS muestra "Sin conexión con WM_Central" | `WM_CENTRAL_REMOTA` mal escrita, falta la regla del puerto 8080 o la IP de EC2 ha cambiado. |
 | La URL de ECS muestra un panel vacío con "Sin Kafka" | Falta la variable `WM_CENTRAL_REMOTA`: ECS está ejecutando una CENTRAL completa aparte. |
 | El Monitor no conecta con CENTRAL | Falta la regla del puerto 9999, o CENTRAL no está en marcha (`docker compose ps`). |
+| `Falta la CA certs/ca.pem` en el Monitor | No se ha copiado `ca.pem` de la instancia o falta el `-v .../certs:/app/certs:ro`. |
+| `El certificado de WM_Central no es de confianza` | El `ca.pem` es de otra CA (se regeneró con `--nueva-ca`) o el certificado no incluye esa IP: `bash deploy/arrancar_aws.sh IP_AWS`. |
+| CENTRAL no arranca: `Faltan el certificado o la clave TLS` | Se lanzó `docker compose up` a mano sin certificados: usar `deploy/arrancar_aws.sh`, que los genera. |
 | El FO se queda en "Conectando con Kafka" | Falta la regla del puerto 9092. |
 | El FO conecta pero luego da error de Kafka | Kafka anuncia una IP antigua: `bash deploy/arrancar_aws.sh IP_AWS`. |
 | Kafka se reinicia continuamente | Poca memoria: usar `t3.small`/`t3.medium` o separar Kafka en otra instancia. |

@@ -90,6 +90,24 @@ Batería completa en verde con Python 3.14 y 3.9.6 en ambas ramas.
 
 **Revisión humana:** pendiente (PR #47 y #48).
 
+### 2026-11-27 · Issue #6 · Claude Code (Claude Opus 5.5)
+
+**Prompt:** «Te he subido una carpeta de para tener en cuenta la seguridad de
+los sockets en python, tenlo en cuenta a la hora de resolver la práctica, haz
+los cambios necesarios, si es necesario rehaz el commit, y dime que tengo que
+hacer en pocas lineas, se claro y conciso». La carpeta es el ejemplo de
+sockets seguros de la asignatura (`server.py`, `cliente.py` y un `cert.pem`),
+que no se versiona.
+
+**Resultado:** canal TLS entre CENTRAL y el Monitor siguiendo el ejemplo
+(`SSLContext` + `wrap_socket`), pero verificando el certificado en el cliente
+en lugar de `_create_unverified_context()`. Opciones `--cert/--key/--ca/--sin-tls`,
+certificados montados en Docker y generados por `deploy/arrancar_aws.sh`,
+`tests/test_tls_sockets.py` y `docs/release2/SOCKETS_SEGUROS.md`.
+
+**Revisión humana:** pendiente. Se ejecutaron las pruebas con Python 3.9 y
+3.14, CENTRAL y el Monitor reales por TLS en local y CENTRAL en Docker.
+
 ## Prompts
 
 ### Prompt 1 · Planificación de Release 2 (2026-11-17)

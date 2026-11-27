@@ -8,6 +8,7 @@ from pathlib import Path
 import signal
 import socket
 import sqlite3
+import ssl
 import sys
 import threading
 import time
@@ -19,6 +20,7 @@ from common import consola  # noqa: E402
 from common.base_datos import BaseDatos, RUTA_BD  # noqa: E402
 from common.configuracion import campo_valido, entero_positivo, positivo, puerto  # noqa: E402
 from common.protocolo import Canal, ConexionCerrada, ErrorProtocolo, NACK  # noqa: E402
+from common.seguridad import contexto_tls_servidor  # noqa: E402
 from common.topics import TOPIC_EVENTOS_WS, TOPIC_PETICIONES  # noqa: E402
 from gestor_riegos import GestorRiegos  # noqa: E402
 from panel_remoto import crear_panel_remoto  # noqa: E402
@@ -27,6 +29,10 @@ from panel_web import RegistroEventos, crear_panel  # noqa: E402
 LOG = logging.getLogger("WM_Central")
 
 INTERVALO_ESTADO_RED_S = 2.0
+# Certificado del canal TLS con los Monitores (scripts/generar_certificados.py).
+RAIZ = Path(__file__).resolve().parent.parent
+CERT_TLS = str(RAIZ / "certs" / "servidor.pem")
+CLAVE_TLS = str(RAIZ / "certs" / "servidor.key")
 
 
 @dataclass
@@ -215,8 +221,11 @@ class SesionMonitor:
 class CentralTCP:
     def __init__(self, host="0.0.0.0", puerto_escucha=9999, timeout=6.0,
                  max_conexiones=64, ruta_bd=RUTA_BD, servidor_kafka=None,
-                 puerto_http=None):
+                 puerto_http=None, contexto_tls=None):
         self.host = host
+        # Con contexto TLS, todo el protocolo con los Monitores viaja cifrado
+        # (ARCHITECTURE.md D2). Sin él, sockets en claro como en Release 1.
+        self.contexto_tls = contexto_tls
         self.puerto = puerto_escucha
         self.puerto_http = puerto_http
         self.timeout = timeout
@@ -305,7 +314,42 @@ class CentralTCP:
 
     # --- Sockets de los Monitores -------------------------------------------
 
+    def _cifrar(self, conexion, direccion):
+        """Handshake TLS como servidor. Devuelve el socket cifrado o None si falla.
+
+        Se hace en el hilo de la conexión, no en el bucle de accept: un cliente
+        lento o que no hable TLS no bloquea a los demás.
+        """
+        conexion.settimeout(self.timeout)
+        try:
+            segura = self.contexto_tls.wrap_socket(conexion, server_side=True)
+        except (ssl.SSLError, OSError) as error:
+            LOG.warning("Handshake TLS fallido con %s: %s", direccion, error)
+            self._auditar_tls_fallido(direccion, error)
+            conexion.close()
+            with self._lock:
+                self._conexiones.pop(conexion, None)
+            return None
+        with self._lock:
+            # wrap_socket deja inservible el socket original: se registra el nuevo
+            # para que servir() pueda desbloquearlo al parar.
+            self._conexiones[segura] = self._conexiones.pop(conexion, None)
+        LOG.debug("TLS con %s: %s %s", direccion, segura.version(), segura.cipher()[0])
+        return segura
+
+    def _auditar_tls_fallido(self, direccion, error):
+        try:
+            self.bd.insertar_auditoria("WS", "AUTH_KO", "KO", ip=str(direccion[0]),
+                                       detalle={"motivo": "HANDSHAKE_TLS",
+                                                "error": str(error)[:200]})
+        except sqlite3.Error as fallo:
+            LOG.warning("No se pudo auditar el fallo TLS: %s", fallo)
+
     def atender(self, conexion, direccion):
+        if self.contexto_tls is not None:
+            conexion = self._cifrar(conexion, direccion)
+            if conexion is None:
+                return
         sesion = SesionMonitor(self.registro, self.gestor)
         canal = Canal(conexion, timeout=self.timeout)
         with conexion:
@@ -353,7 +397,8 @@ class CentralTCP:
                 servidor.listen()
                 servidor.settimeout(0.25)
                 self.puerto = servidor.getsockname()[1]
-                LOG.info("TCP escuchando en %s:%s", self.host, self.puerto)
+                LOG.info("TCP escuchando en %s:%s (%s)", self.host, self.puerto,
+                         "TLS" if self.contexto_tls is not None else "SIN cifrar")
                 if self.servidor_kafka:
                     for objetivo in (self.escuchar_kafka, self.tareas_periodicas):
                         threading.Thread(target=objetivo, daemon=True).start()
@@ -372,7 +417,11 @@ class CentralTCP:
                             hilo = threading.Thread(target=self.atender,
                                                     args=(conexion, direccion))
                             self._conexiones[conexion] = hilo
-                    if lleno:
+                    if lleno and self.contexto_tls is not None:
+                        # Sin handshake no se le puede mandar nada: se cierra.
+                        LOG.warning("Límite de conexiones alcanzado: %s", direccion)
+                        conexion.close()
+                    elif lleno:
                         LOG.warning("Límite de conexiones alcanzado: %s", direccion)
                         with conexion:
                             conexion.settimeout(self.timeout)
@@ -389,7 +438,9 @@ class CentralTCP:
             for conexion, _ in pendientes:
                 try:
                     # Desbloquea recv conservando la escritura para enviar EOT.
-                    conexion.shutdown(socket.SHUT_RD)
+                    # Se llama al shutdown de socket.socket: el de SSLSocket
+                    # desactivaría el cifrado y el EOT saldría en claro.
+                    socket.socket.shutdown(conexion, socket.SHUT_RD)
                 except OSError:
                     pass
             for _, hilo in pendientes:
@@ -418,6 +469,30 @@ def servir_panel_remoto(parser, url_central, puerto_http):
         servidor.server_close()
 
 
+def cargar_tls(parser, args):
+    """Contexto TLS de CENTRAL, o None solo con --sin-tls.
+
+    En Release 2 el canal con los Monitores va siempre cifrado: si faltan el
+    certificado o la clave, CENTRAL no arranca en lugar de caer a texto en claro.
+    """
+    if args.sin_tls:
+        LOG.warning("TLS desactivado (--sin-tls): los Monitores hablarán en claro")
+        return None
+    cert = args.cert or CERT_TLS
+    # Como en el ejemplo de la asignatura, certificado y clave pueden ir en un mismo PEM.
+    clave = args.key or (args.cert if args.cert else CLAVE_TLS)
+    if not (Path(cert).is_file() and Path(clave).is_file()):
+        parser.exit(1, f"Faltan el certificado o la clave TLS ({cert}, {clave}).\n"
+                       "Genéralos con: python scripts/generar_certificados.py IP_PUBLICA\n"
+                       "o arranca sin cifrado (solo pruebas) con --sin-tls\n")
+    try:
+        contexto = contexto_tls_servidor(cert, clave)
+    except (ssl.SSLError, OSError) as error:
+        parser.exit(1, f"Certificado TLS no válido ({cert}): {error}\n")
+    LOG.info("TLS activo con los Monitores (certificado %s)", cert)
+    return contexto
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("puerto", nargs="?", type=puerto,
@@ -436,17 +511,26 @@ def main(argv=None):
     parser.add_argument("--remota", default=os.getenv("WM_CENTRAL_REMOTA"),
                         help="URL del panel de una CENTRAL en otra máquina "
                              "(http://IP:8080): solo se sirve su panel (ECS)")
+    parser.add_argument("--cert", default=os.getenv("WM_TLS_CERT"),
+                        help="Certificado TLS para los Monitores (por defecto certs/servidor.pem)")
+    parser.add_argument("--key", default=os.getenv("WM_TLS_KEY"),
+                        help="Clave privada del certificado (por defecto certs/servidor.key). "
+                             "Puede ser el mismo fichero que --cert si contiene ambos")
+    parser.add_argument("--sin-tls", action="store_true",
+                        default=os.getenv("WM_SIN_TLS", "") == "1",
+                        help="Sockets en claro, como en Release 1 (solo pruebas)")
     parser.add_argument("--verbose", action="store_true")
     args = parser.parse_args(argv)
     consola.configurar(logging.DEBUG if args.verbose else logging.INFO)
     if args.remota:
         servir_panel_remoto(parser, args.remota, args.http)
         return
+    contexto_tls = cargar_tls(parser, args)
     consola.escribir(f"WM_Central · sockets en el puerto {args.puerto}, "
                      f"Kafka en {args.kafka or '(sin Kafka)'}", "negrita")
     try:
         central = CentralTCP(args.host, args.puerto, args.timeout, args.max_conexiones,
-                             args.db, args.kafka, args.http)
+                             args.db, args.kafka, args.http, contexto_tls)
         for senal in (signal.SIGINT, signal.SIGTERM):
             signal.signal(senal, lambda *_: central.detener())
         central.servir()

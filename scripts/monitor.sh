@@ -7,8 +7,20 @@
 #
 # PUERTO_ENGINE (9100 por defecto) es donde el Monitor espera a su Engine:
 # cada estación del mismo PC necesita uno distinto (9100, 9101...).
+#
+# La sesión con CENTRAL va por TLS: antes hay que copiar el ca.pem de CENTRAL
+# en certs/ca.pem. WM_SIN_TLS=1 conecta en claro (solo pruebas).
 set -euo pipefail
 cd "$(dirname "$0")/.."
+
+if [ ! -f certs/ca.pem ] && [ "${WM_SIN_TLS:-}" != "1" ]; then
+    echo "Falta certs/ca.pem: cópiala desde la máquina de CENTRAL (cat certs/ca.pem en la instancia)" >&2
+    exit 1
+fi
+SIN_TLS=""
+if [ "${WM_SIN_TLS:-}" = "1" ]; then
+    SIN_TLS="--sin-tls"
+fi
 
 if [ $# -lt 3 ]; then
     echo "Uso: scripts/monitor.sh IP_CENTRAL WS_ID \"UBICACION\" [PUERTO_ENGINE]" >&2
@@ -21,4 +33,4 @@ PUERTO_ENGINE=${4:-9100}
 
 . scripts/lanzar.sh
 lanzar "wm-monitor-$WS_ID" "" \
-    WM_WS/WM_WS_M.py "$IP" 9999 "$WS_ID" "$UBICACION" --puerto-engine "$PUERTO_ENGINE"
+    WM_WS/WM_WS_M.py "$IP" 9999 "$WS_ID" "$UBICACION" --puerto-engine "$PUERTO_ENGINE" $SIN_TLS
