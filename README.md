@@ -68,6 +68,9 @@ Para más estaciones en el mismo equipo, cada pareja Monitor/Engine usa otro
 python -m unittest -v
 ```
 
+GitHub Actions las ejecuta con Python 3.9 y 3.12 en cada push a `main` y en
+cada pull request; la imagen de Docker Hub solo se publica si pasan.
+
 ## Documentación
 
 - [Diseño](docs/DISENO.md): estados, mensajes, ciclo de riego y resiliencia.
@@ -75,3 +78,25 @@ python -m unittest -v
 - [Persistencia](docs/PERSISTENCIA.md): esquema SQLite y administración.
 - [Despliegue en AWS](docs/DESPLIEGUE_AWS.md): CENTRAL y Kafka en EC2.
 - [Pruebas de SQLite y Kafka](docs/PRUEBAS_SQLITE_KAFKA.md).
+
+## Release 2 (en desarrollo)
+
+La Release 2 añade servicios REST y seguridad sobre el sistema anterior:
+WM_Registry (alta y baja de estaciones por HTTPS), autenticación de las
+estaciones con clave simétrica única y mensajes cifrados, auditoría,
+API_Central, Front web y WM_W (clima de OpenWeather cada 4 s). Entrega: semana
+del 13/12/2026. Lo descrito arriba corresponde a Release 1 y sigue vigente
+mientras no se cierren los Issues de Release 2.
+
+Planificación:
+
+- [Matriz de requisitos y trazabilidad](docs/release2/REQUIREMENTS.md)
+- [Plan de implementación](docs/release2/IMPLEMENTATION_PLAN.md): orden, ruta crítica, riesgos y checklist de evaluación.
+- [Arquitectura y decisiones técnicas](docs/release2/ARCHITECTURE.md): contratos de Registry, sockets, Kafka cifrado y API_Central.
+- [Dependencias](docs/release2/DEPENDENCIES.md) y [plan de pruebas](docs/release2/TEST_PLAN.md).
+- [Uso de IA y prompts](docs/release2/AI_USAGE.md).
+
+Seguimiento en GitHub:
+[Issues de Release 2](https://github.com/aggg15/Sistemas-Distribuidos/issues?q=label%3Arelease-2),
+[épicas](https://github.com/aggg15/Sistemas-Distribuidos/issues?q=label%3Aepic) y
+[milestones](https://github.com/aggg15/Sistemas-Distribuidos/milestones).
