@@ -1,0 +1,82 @@
+{
+  "info": {
+    "name": "WM_Registry · Water Management SD 26/27",
+    "description": "Llamadas a la API REST de WM_Registry, como las de Postman del tutorial «Servicios web – API REST con Node.js».\n\nAntes de empezar:\n1. Settings → Certificates → CA Certificates: selecciona certs/ca.pem (la CA del proyecto). Sin ella Postman rechaza el certificado del Registry.\n2. Cambia la variable base_url si el Registry no está en localhost (por ejemplo, https://IP_AWS:8443/registry/v1).\n\nLa petición «Alta» guarda la credencial recibida en la variable credencial; las demás la envían en la cabecera Authorization: Bearer. No exportes la colección con el valor de credencial relleno.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url", "value": "https://localhost:8443/registry/v1" },
+    { "key": "ws_id", "value": "WS-04" },
+    { "key": "credencial", "value": "" }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{credencial}}", "type": "string" }]
+  },
+  "item": [
+    {
+      "name": "1. Listado de estaciones (GET)",
+      "request": {
+        "auth": { "type": "noauth" },
+        "method": "GET",
+        "url": "{{base_url}}/estaciones"
+      }
+    },
+    {
+      "name": "2. Alta de una estación (PUT)",
+      "event": [{
+        "listen": "test",
+        "script": {
+          "type": "text/javascript",
+          "exec": [
+            "pm.test('201 Created', () => pm.response.to.have.status(201));",
+            "const datos = pm.response.json();",
+            "if (datos.credencial) {",
+            "  pm.collectionVariables.set('credencial', datos.credencial);",
+            "  console.log('Credencial guardada en la variable credencial');",
+            "}"
+          ]
+        }
+      }],
+      "request": {
+        "auth": { "type": "noauth" },
+        "method": "PUT",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"ubicacion\": \"River Park\"\n}" },
+        "url": "{{base_url}}/estaciones/{{ws_id}}"
+      }
+    },
+    {
+      "name": "3. Datos de la estación (GET)",
+      "request": { "method": "GET", "url": "{{base_url}}/estaciones/{{ws_id}}" }
+    },
+    {
+      "name": "4. Cambiar la ubicación (PUT con credencial)",
+      "request": {
+        "method": "PUT",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"ubicacion\": \"Central Park\"\n}" },
+        "url": "{{base_url}}/estaciones/{{ws_id}}"
+      }
+    },
+    {
+      "name": "5. Autenticación (POST)",
+      "request": { "method": "POST", "url": "{{base_url}}/estaciones/{{ws_id}}/autenticacion" }
+    },
+    {
+      "name": "6. Autenticación con credencial errónea (POST → 401)",
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [{ "key": "token", "value": "credencial-incorrecta", "type": "string" }]
+        },
+        "method": "POST",
+        "url": "{{base_url}}/estaciones/{{ws_id}}/autenticacion"
+      }
+    },
+    {
+      "name": "7. Baja de la estación (DELETE)",
+      "request": { "method": "DELETE", "url": "{{base_url}}/estaciones/{{ws_id}}" }
+    }
+  ]
+}

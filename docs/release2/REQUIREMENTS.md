@@ -4,17 +4,19 @@ Fuente: `Practica_SD2627_WaterManagement_Release2.pdf` (9 páginas, autor J. V. 
 8/11/2026). Las referencias «p. N» son números de página del PDF. El PDF no se
 versiona en este repositorio público; cada miembro del grupo lo tiene en local.
 
-Análisis realizado el 17/11/2026 sobre `main` en el commit `07a4dbd`. Las pruebas
+Análisis realizado el 17/11/2026 sobre `main` en el commit `07a4dbd`. Estados
+actualizados el 27/11/2026 con #1, #2 y #24 cerrados y el Registry y el Front
+en Node.js + Express ([TUTORIAL_API_REST.md](TUTORIAL_API_REST.md)). Las pruebas
 de Release 1 (`python -m unittest`) pasan: **134 pruebas OK** con `kafka-python`
 instalado (sin él se omiten 61).
 
 ## Resumen
 
 - Requisitos identificados: **56** (49 obligatorios, 4 opcionales del PDF y 3 derivados).
-- Pendiente: 31
-- Implementado parcialmente: 20
-- Implementado y verificado: 2
-- No aplicable, con justificación: 2
+- Pendiente: 25
+- Implementado parcialmente: 22
+- Implementado y verificado: 7
+- No aplicable, con justificación: 1
 - Requiere investigación: 1
 
 Criterios de estado:
@@ -40,14 +42,14 @@ cumplirlo con garantías (repositorio público, regresión).
 | R2-002 | Consumir una API REST de terceros (OpenWeather) dentro de una arquitectura SOA. | p. 1 Preámbulo | WM_W | Pendiente | Alta | Obligatorio | [#19](https://github.com/aggg15/Sistemas-Distribuidos/issues/19) |
 | R2-003 | Desarrollar y exponer una API REST propia en el backend, consumida por el Front y otros módulos. | p. 1 Preámbulo | API_Central | Implementado parcialmente | Alta | Obligatorio | [#12](https://github.com/aggg15/Sistemas-Distribuidos/issues/12), [#16](https://github.com/aggg15/Sistemas-Distribuidos/issues/16) |
 | R2-004 | Lenguaje libre por componente; el estudiante asume su despliegue en el laboratorio. | p. 3 Diseño técnico | Todos | No aplicable, con justificación | — | Obligatorio | — |
-| R2-005 | Nuevo módulo WM_Registry para que las WS (desde WM_WS_M) se den de alta o baja. | p. 2 punto 2; p. 3 Registry | WM_Registry | Pendiente | Crítica | Obligatorio | [#3](https://github.com/aggg15/Sistemas-Distribuidos/issues/3), [#4](https://github.com/aggg15/Sistemas-Distribuidos/issues/4) |
-| R2-006 | WM_Registry ofrece las opciones de alta, baja y autenticación de una WS. | p. 3 Registry, párrafo 1 | WM_Registry | Pendiente | Crítica | Obligatorio | [#3](https://github.com/aggg15/Sistemas-Distribuidos/issues/3) |
+| R2-005 | Nuevo módulo WM_Registry para que las WS (desde WM_WS_M) se den de alta o baja. | p. 2 punto 2; p. 3 Registry | WM_Registry | Implementado parcialmente | Crítica | Obligatorio | [#3](https://github.com/aggg15/Sistemas-Distribuidos/issues/3), [#4](https://github.com/aggg15/Sistemas-Distribuidos/issues/4) |
+| R2-006 | WM_Registry ofrece las opciones de alta, baja y autenticación de una WS. | p. 3 Registry, párrafo 1 | WM_Registry | Implementado y verificado | Crítica | Obligatorio | [#3](https://github.com/aggg15/Sistemas-Distribuidos/issues/3) |
 | R2-007 | Antes de autenticarse, la WS debe darse de alta registrando su ID y localización. | p. 3 Registry, párrafo 1 | WM_Registry, WM_WS_M | Implementado parcialmente | Crítica | Obligatorio | [#1](https://github.com/aggg15/Sistemas-Distribuidos/issues/1), [#3](https://github.com/aggg15/Sistemas-Distribuidos/issues/3), [#4](https://github.com/aggg15/Sistemas-Distribuidos/issues/4) |
 | R2-008 | Sin alta, WM_Central deniega la autenticación de la WS. | p. 3 Registry, párrafo 1 | WM_Central | Implementado parcialmente | Crítica | Obligatorio | [#7](https://github.com/aggg15/Sistemas-Distribuidos/issues/7) |
-| R2-009 | El Registry se implementa como API REST con los métodos oportunos (GET, PUT, DELETE...). | p. 3 Registry, viñeta 1 | WM_Registry | Pendiente | Crítica | Obligatorio | [#3](https://github.com/aggg15/Sistemas-Distribuidos/issues/3) |
-| R2-010 | Canal seguro (HTTPS/SSL/RSA) entre WM_Registry y WM_WS_M. | p. 2 Mecanismos (autenticación segura); p. 3 viñeta 2 | WM_Registry, WM_WS_M | Pendiente | Crítica | Obligatorio | [#2](https://github.com/aggg15/Sistemas-Distribuidos/issues/2), [#3](https://github.com/aggg15/Sistemas-Distribuidos/issues/3), [#4](https://github.com/aggg15/Sistemas-Distribuidos/issues/4), [#25](https://github.com/aggg15/Sistemas-Distribuidos/issues/25) |
+| R2-009 | El Registry se implementa como API REST con los métodos oportunos (GET, PUT, DELETE...). | p. 3 Registry, viñeta 1 | WM_Registry | Implementado y verificado | Crítica | Obligatorio | [#3](https://github.com/aggg15/Sistemas-Distribuidos/issues/3) |
+| R2-010 | Canal seguro (HTTPS/SSL/RSA) entre WM_Registry y WM_WS_M. | p. 2 Mecanismos (autenticación segura); p. 3 viñeta 2 | WM_Registry, WM_WS_M | Implementado parcialmente | Crítica | Obligatorio | [#2](https://github.com/aggg15/Sistemas-Distribuidos/issues/2), [#3](https://github.com/aggg15/Sistemas-Distribuidos/issues/3), [#4](https://github.com/aggg15/Sistemas-Distribuidos/issues/4), [#25](https://github.com/aggg15/Sistemas-Distribuidos/issues/25) |
 | R2-011 | Identificación de las WS mediante certificado autofirmado con sus datos identificativos. | p. 3 Registry, viñeta 3 | WM_Registry, WM_WS_M | Pendiente | Baja | Opcional | [#5](https://github.com/aggg15/Sistemas-Distribuidos/issues/5) |
-| R2-012 | En respuesta al alta, WM_Registry devuelve las credenciales para autenticarse en WM_Central. | p. 2 punto 2; p. 3 viñeta 4 | WM_Registry | Pendiente | Crítica | Obligatorio | [#3](https://github.com/aggg15/Sistemas-Distribuidos/issues/3), [#4](https://github.com/aggg15/Sistemas-Distribuidos/issues/4) |
+| R2-012 | En respuesta al alta, WM_Registry devuelve las credenciales para autenticarse en WM_Central. | p. 2 punto 2; p. 3 viñeta 4 | WM_Registry | Implementado y verificado | Crítica | Obligatorio | [#3](https://github.com/aggg15/Sistemas-Distribuidos/issues/3), [#4](https://github.com/aggg15/Sistemas-Distribuidos/issues/4) |
 | R2-013 | WM_Central expone una API para que WM_W informe si la climatología de una WS es adecuada y notifique alertas. | p. 4 CENTRAL, punto 1 | API_Central | Pendiente | Alta | Obligatorio | [#17](https://github.com/aggg15/Sistemas-Distribuidos/issues/17) |
 | R2-014 | Las WS se autentican en WM_Central con las credenciales del Registry. | p. 4 CENTRAL, punto 2 | WM_Central, WM_WS_M | Pendiente | Crítica | Obligatorio | [#7](https://github.com/aggg15/Sistemas-Distribuidos/issues/7), [#8](https://github.com/aggg15/Sistemas-Distribuidos/issues/8), [#25](https://github.com/aggg15/Sistemas-Distribuidos/issues/25) |
 | R2-015 | Si la autenticación es correcta, CENTRAL devuelve al Monitor una clave de cifrado simétrico ÚNICA por WS. | p. 4 CENTRAL, punto 2 | WM_Central | Pendiente | Crítica | Obligatorio | [#7](https://github.com/aggg15/Sistemas-Distribuidos/issues/7), [#25](https://github.com/aggg15/Sistemas-Distribuidos/issues/25) |
@@ -76,7 +78,7 @@ cumplirlo con garantías (repositorio público, regresión).
 | R2-038 | Cuando el clima vuelve a ser favorable, WM_W notifica la cancelación y la WS se restaura. | p. 5 WM_W, viñeta 4 | WM_W, WM_Central | Implementado parcialmente | Alta | Obligatorio | [#15](https://github.com/aggg15/Sistemas-Distribuidos/issues/15), [#21](https://github.com/aggg15/Sistemas-Distribuidos/issues/21) |
 | R2-039 | Front: aplicación web pública que consume API_Central y muestra el dashboard de CENTRAL desde cualquier navegador. | p. 2 punto 3; p. 5 Front; Figura 1 | Front | Implementado parcialmente | Alta | Obligatorio | [#22](https://github.com/aggg15/Sistemas-Distribuidos/issues/22) |
 | R2-040 | El Front muestra estado de las WS (registro, activación, token), operarios, errores, mensajes de WM_W, clima y alertas. | p. 5 Front | Front | Implementado parcialmente | Alta | Obligatorio | [#23](https://github.com/aggg15/Sistemas-Distribuidos/issues/23) |
-| R2-041 | Se recomienda Node.js para el Front. | p. 5 Front, nota | Front | No aplicable, con justificación | — | Opcional | [#22](https://github.com/aggg15/Sistemas-Distribuidos/issues/22) |
+| R2-041 | Se recomienda Node.js para el Front. | p. 5 Front, nota | Front | Implementado y verificado | — | Opcional | [#22](https://github.com/aggg15/Sistemas-Distribuidos/issues/22) |
 | R2-042 | WM_FO mantiene su funcionalidad y no necesita cifrado con la Central. | p. 5 Field Operators | WM_FO | Implementado y verificado | Media | Obligatorio | [#26](https://github.com/aggg15/Sistemas-Distribuidos/issues/26) |
 | R2-043 | Usar OpenWeather (plan gratuito, API key) y el endpoint Current weather data por ciudad. | p. 5 Servidor de Clima; p. 6 planes; p. 7 endpoint | WM_W | Pendiente | Alta | Obligatorio | [#19](https://github.com/aggg15/Sistemas-Distribuidos/issues/19) |
 | R2-044 | Analizar la temperatura (`main.temp`, en Kelvin por defecto) u otras condiciones adversas del JSON. | p. 5; p. 7; p. 8 (JSON) | WM_W | Pendiente | Alta | Obligatorio | [#19](https://github.com/aggg15/Sistemas-Distribuidos/issues/19) |
@@ -90,7 +92,7 @@ cumplirlo con garantías (repositorio público, regresión).
 | R2-052 | El profesor puede solicitar cualquier otra evidencia para la evaluación. | p. 9 Entregables y Evaluación, párrafo final | Documentación | Requiere investigación | Media | Obligatorio | [#34](https://github.com/aggg15/Sistemas-Distribuidos/issues/34) |
 | R2-053 | Interfaces de la Figura 1: Browser→Front (HTTP), Front→API_Central (REST), WM_W↔API_Central (REST), WM_W→OpenWeather (REST), Registry↔Monitor (REST), CENTRAL↔WS (sockets de estado y autenticación), Kafka (streaming y colas) con Engine y FO. | p. 3 Figura 1 | Todos | Implementado parcialmente | Alta | Obligatorio | [#27](https://github.com/aggg15/Sistemas-Distribuidos/issues/27), [#30](https://github.com/aggg15/Sistemas-Distribuidos/issues/30) |
 | R2-D01 | No publicar credenciales, claves, tokens, API keys ni claves privadas de certificados en GitHub (repositorio público). | Derivado de p. 3–5 (credenciales, claves, API key) | Todos | Implementado parcialmente | Crítica | Derivado | [#2](https://github.com/aggg15/Sistemas-Distribuidos/issues/2), [#19](https://github.com/aggg15/Sistemas-Distribuidos/issues/19), [#27](https://github.com/aggg15/Sistemas-Distribuidos/issues/27) |
-| R2-D02 | Integración continua que ejecute las pruebas antes de publicar la imagen. | Derivado de p. 2 (funcionalidad base idéntica) | CI | Pendiente | Alta | Derivado | [#24](https://github.com/aggg15/Sistemas-Distribuidos/issues/24) |
+| R2-D02 | Integración continua que ejecute las pruebas antes de publicar la imagen. | Derivado de p. 2 (funcionalidad base idéntica) | CI | Implementado y verificado | Alta | Derivado | [#24](https://github.com/aggg15/Sistemas-Distribuidos/issues/24) |
 | R2-D03 | Regresión de Release 1 (incluida la resiliencia ante caídas) en cada hito. | Derivado de p. 2 | Todos | Implementado parcialmente | Alta | Derivado | [#26](https://github.com/aggg15/Sistemas-Distribuidos/issues/26) |
 
 ## Notas sobre el estado actual
@@ -98,8 +100,9 @@ cumplirlo con garantías (repositorio público, regresión).
 - **R2-001** — 134 pruebas en verde con kafka-python (17/11/2026); hay que mantenerlo durante toda la R2.
 - **R2-003** — `panel_web.py` ya expone `GET /api/estado` y `POST /api/orden` (sin versionar ni recursos REST).
 - **R2-004** — Permiso, no funcionalidad: se mantiene Python 3.9+ en todos los módulos.
-- **R2-007** — Hoy el alta la hace un administrador con `scripts/gestionar_bd.py`, no la WS por REST.
-- **R2-008** — `KO#WS_NO_REGISTRADA` existe (commit 07a4dbd) contra la tabla `estaciones`; falta ligarlo al Registry y a la baja.
+- **R2-005, R2-006, R2-009, R2-012** — WM_Registry (Node.js + Express) con alta, consulta, cambio de ubicación, baja y autenticación por REST sobre HTTPS; devuelve la credencial en el alta. Pruebas: `WM_Registry/test/` y `tests/test_registry.py`. Falta el cliente del Monitor (#4).
+- **R2-007** — El alta ya puede hacerse por REST en el Registry; falta la opción de menú del Monitor (#4). `scripts/gestionar_bd.py` sigue sirviendo para el caso base.
+- **R2-008** — `KO#WS_NO_REGISTRADA` también para las estaciones dadas de baja en el Registry. Falta exigir la credencial al autenticar (#7).
 - **R2-017** — Existe FUERA_SERVICIO por bloqueo manual; no hay claves.
 - **R2-020** — La sesión por sockets con protocolo STX/ETX/LRC existe; falta autenticación con credenciales y TLS.
 - **R2-023** — Solo hay logs de texto en consola y 100 eventos en memoria para el panel.
@@ -110,9 +113,10 @@ cumplirlo con garantías (repositorio público, regresión).
 - **R2-030** — El Monitor de R1 no tiene menú.
 - **R2-037** — BLOQUEAR existe pero corta el riego en curso de inmediato.
 - **R2-038** — ACTIVAR existe para el bloqueo manual.
-- **R2-039** — Panel web servido por CENTRAL y `panel_remoto.py` (proxy); no consume una API_Central versionada.
+- **R2-010** — El Registry solo atiende HTTPS (TLS ≥ 1.2, CA del proyecto); falta el cliente del Monitor (#4).
+- **R2-039** — `WM_Front/` (Node.js + Express) es un proceso propio, de solo consulta, que reenvía `GET /api/*` a API_Central; hoy usa `GET /api/estado` de R1.
 - **R2-040** — Muestra estado de WS, riegos y eventos; faltan registro, token, operarios, clima y alertas.
-- **R2-041** — Recomendación, no obligación: se mantiene Python (stdlib) para no añadir runtime; alternativas en ARCHITECTURE.md.
+- **R2-041** — Se sigue la recomendación: Front (y Registry) en Node.js + Express según el tutorial de la asignatura (ARCHITECTURE.md D4 y D7).
 - **R2-042** — Solo se añade el campo `ip` en la solicitud para la auditoría (R2-025).
 - **R2-045** — CENTRAL, Kafka y SQLite ya se despliegan en EC2 (docs/DESPLIEGUE_AWS.md).
 - **R2-046** — Scripts de operario existentes; falta WM_W.
@@ -121,7 +125,7 @@ cumplirlo con garantías (repositorio público, regresión).
 - **R2-052** — No se sabe qué evidencias se pedirán: se preparan auditoría, capturas, logs y demo reproducible.
 - **R2-053** — Sockets y Kafka existen; faltan las interfaces REST nuevas.
 - **R2-D01** — `.gitignore` ya excluye `.env` y datos; faltan `certs/` y ficheros de credenciales.
-- **R2-D02** — El workflow actual solo construye y publica.
+- **R2-D02** — GitHub Actions ejecuta las pruebas de Python (3.9 y 3.12) y de Node.js (22 y 24) en cada PR; la imagen solo se publica si pasan (#24, #49).
 - **R2-D03** — Escenarios de caída verificados el 29/10/2026 (docs/DISENO.md §10).
 
 ## Verificación de la cobertura

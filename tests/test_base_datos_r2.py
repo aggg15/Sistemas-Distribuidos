@@ -143,6 +143,15 @@ class PruebasRegistry(Temporal):
         self.assertFalse(self.bd.baja_registry("WS-01"))
         self.assertFalse(self.bd.baja_registry("WS-99"))
 
+    def test_central_no_acepta_una_estacion_dada_de_baja(self):
+        self.bd.alta_registry("WS-01", "Alicante", "hash-1")
+        self.assertIsNotNone(self.bd.conectar_estacion("WS-01", "Alicante"))
+        self.bd.baja_registry("WS-01")
+        # None hace que CENTRAL responda KO#WS_NO_REGISTRADA.
+        self.assertIsNone(self.bd.conectar_estacion("WS-01", "Alicante"))
+        self.bd.alta_registry("WS-01", "Alicante", "hash-2")
+        self.assertIsNotNone(self.bd.conectar_estacion("WS-01", "Alicante"))
+
     def test_re_alta_tras_baja_conserva_bloqueo_e_historial(self):
         self.bd.alta_registry("WS-01", "Alicante", "hash-1")
         self.bd.guardar_bloqueo("WS-01", True)

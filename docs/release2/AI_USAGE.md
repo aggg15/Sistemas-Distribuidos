@@ -90,6 +90,37 @@ Batería completa en verde con Python 3.14 y 3.9.6 en ambas ramas.
 
 **Revisión humana:** pendiente (PR #47 y #48).
 
+### 2026-11-27 · Revisión de los PR y fusión · Claude Code (Claude Opus 5.5)
+
+**Prompt:** «haz una revision completa del repositorio con lo que te comenté de
+la segunda practica y que hemos subido a github como pr».
+
+**Resultado:** revisión de los PR #45–#48 contra el PDF (sin cambios). Se
+detectaron, entre otros: el Front público con órdenes, el socket Monitor ↔
+Engine en `0.0.0.0`, `wm.estado_red` en claro, API_Central por HTTP,
+`ssl.wrap_socket` en D2 y los permisos de las claves al regenerarlas.
+
+### 2026-11-27 · Tutorial de API REST (Issues #3 y #22) · Claude Code (Claude Opus 5.5)
+
+**Prompt:** «Nos han dado un documento nuevo de tutorial de servicios web API
+REST, siguelo y adaptalo a la práctica, con todos los cambios necesario
+incluido el github». Respuestas a las preguntas de la IA: módulos en Node.js =
+«Registry + Front»; «Sí, fusionar #46→#45→#47→#48»; «Sí, fusiona #49». Durante
+la sesión: «Los cambios los subes con mi usuario de github, no con el tuyo»
+(desde entonces, sin `Co-Authored-By` de la IA en los commits).
+
+**Resultado:**
+
+- Fusionados #46, #45, #47 y #48. #48 incluye antes un arreglo: permisos 0600 al regenerar una clave.
+- PR #49 (fusionado): runner `ubuntu-24.04`, porque `ubuntu-latest` (26.04) ya no tiene Python 3.9.
+- PR #50 (abierto): reintentos al inicializar la BD (`database is locked` cuando CENTRAL y el Registry arrancan a la vez; visto en la CI).
+- Rama `feat/r2-registry-front-node`: WM_Registry y WM_Front en Node.js + Express; `conectar_estacion` rechaza las estaciones dadas de baja; Dockerfiles y servicios de compose (perfil `release2`); job `tests-node` en GitHub Actions; colección de Postman; `docs/release2/TUTORIAL_API_REST.md`; actualización de ARCHITECTURE (D4 y D7 revisadas), REQUIREMENTS, IMPLEMENTATION_PLAN, DEPENDENCIES, TEST_PLAN, README e Issues #3 y #22.
+- Verificado en local con Python 3.9.6 y 3.14 y Node.js 26, y con Docker Compose (central + registry + front).
+
+**Revisión humana:** pendiente. Revisar en especial la decisión de dejar el
+Front de solo consulta (ARCHITECTURE.md D7) y que la regla de alta está
+escrita en Python (`alta_registry`) y en Node.js (`bd.js`).
+
 ## Prompts
 
 ### Prompt 1 · Planificación de Release 2 (2026-11-17)

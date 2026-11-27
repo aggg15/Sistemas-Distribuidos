@@ -145,10 +145,12 @@ class BaseDatos:
 
     def conectar_estacion(self, ws_id, ubicacion):
         """El Monitor de una estación dada de alta se ha autenticado: se guardan
-        su ubicación y la hora. Devuelve la fila, o None si no está dada de alta."""
+        su ubicación y la hora. Devuelve la fila, o None si no está dada de alta
+        (no existe o WM_Registry le dio de baja: CENTRAL responde KO#WS_NO_REGISTRADA)."""
         with self._conexion() as conexion:
             cursor = conexion.execute(
-                "UPDATE estaciones SET ubicacion=?, ultima_conexion=? WHERE id=?",
+                """UPDATE estaciones SET ubicacion=?, ultima_conexion=?
+                   WHERE id=? AND estado_registro='ALTA'""",
                 (ubicacion, _ahora(), ws_id),
             )
             if cursor.rowcount == 0:

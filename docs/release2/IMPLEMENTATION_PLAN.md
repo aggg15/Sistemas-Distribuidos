@@ -21,8 +21,9 @@ de seguridad. Detalle en [ARCHITECTURE.md §1](ARCHITECTURE.md#1-arquitectura-ac
 
 ## 2. Arquitectura objetivo
 
-Se añaden WM_Registry (REST sobre HTTPS), API_Central (REST, en el proceso de
-CENTRAL), Front (web independiente), WM_W (OpenWeather cada 4 s) y tres capas
+Se añaden WM_Registry (REST sobre HTTPS, Node.js + Express), API_Central (REST,
+en Python, en el proceso de CENTRAL), Front (web independiente, Node.js +
+Express, de solo consulta), WM_W (OpenWeather cada 4 s) y tres capas
 de seguridad: TLS en el registro y en la autenticación por sockets, cifrado
 Fernet con clave única por WS en todos los mensajes CENTRAL ↔ WS, y auditoría
 estructurada. Despliegue en tres ubicaciones: cloud, PC1 (FO + WM_W) y PC2 (WS).
@@ -33,10 +34,10 @@ estructurada. Despliegue en tres ubicaciones: cloud, PC1 (FO + WM_W) y PC2 (WS).
 flowchart TB
     B(("Navegador")) -- HTTP --> FRONT
     subgraph Cloud["Cloud · AWS Labs"]
-        FRONT["Front :8000"]
+        FRONT["Front · Node.js :8000"]
         API["API_Central :8080"]
         CEN["WM_Central<br/>sockets TLS :9999"]
-        REG["WM_Registry<br/>HTTPS :8443"]
+        REG["WM_Registry · Node.js<br/>HTTPS :8443"]
         DB[("SQLite")]
         K[["Kafka :9092"]]
         AUD["Auditoría<br/>SQLite + JSONL"]
@@ -82,6 +83,7 @@ integrantes.
 | 4. Cierre funcional | [#16](https://github.com/aggg15/Sistemas-Distribuidos/issues/16) control vía API · [#18](https://github.com/aggg15/Sistemas-Distribuidos/issues/18) auditoría completa · [#23](https://github.com/aggg15/Sistemas-Distribuidos/issues/23) dashboard | Todos los requisitos funcionales demostrables en local | 1–5/12 |
 | 5. Integración y despliegue | [#25](https://github.com/aggg15/Sistemas-Distribuidos/issues/25) seguridad · [#26](https://github.com/aggg15/Sistemas-Distribuidos/issues/26) E2E y regresión · [#27](https://github.com/aggg15/Sistemas-Distribuidos/issues/27) contenedores · [#28](https://github.com/aggg15/Sistemas-Distribuidos/issues/28) AWS · [#29](https://github.com/aggg15/Sistemas-Distribuidos/issues/29) PCs · [#30](https://github.com/aggg15/Sistemas-Distribuidos/issues/30) validación | Sistema completo en cloud + 2 PCs con evidencias | 3–10/12 |
 | 6. Entrega | [#31](https://github.com/aggg15/Sistemas-Distribuidos/issues/31) documentación · [#33](https://github.com/aggg15/Sistemas-Distribuidos/issues/33) memoria · [#34](https://github.com/aggg15/Sistemas-Distribuidos/issues/34) defensa | Memoria y demo listas | 8–13/12 |
+| Estado a 27/11/2026 | Cerrados [#1](https://github.com/aggg15/Sistemas-Distribuidos/issues/1), [#2](https://github.com/aggg15/Sistemas-Distribuidos/issues/2), [#24](https://github.com/aggg15/Sistemas-Distribuidos/issues/24); [#3](https://github.com/aggg15/Sistemas-Distribuidos/issues/3) y [#22](https://github.com/aggg15/Sistemas-Distribuidos/issues/22) hechos en Node.js + Express según el tutorial ([TUTORIAL_API_REST.md](TUTORIAL_API_REST.md)) | La fase 2 continúa con [#6](https://github.com/aggg15/Sistemas-Distribuidos/issues/6), [#7](https://github.com/aggg15/Sistemas-Distribuidos/issues/7) y [#4](https://github.com/aggg15/Sistemas-Distribuidos/issues/4) | — |
 | Opcionales | [#5](https://github.com/aggg15/Sistemas-Distribuidos/issues/5) certificado de WS · [#11](https://github.com/aggg15/Sistemas-Distribuidos/issues/11) seguridad Kafka · [#13](https://github.com/aggg15/Sistemas-Distribuidos/issues/13) REST de autenticación | Solo si las fases 0–5 están cerradas | Si hay margen |
 
 Reparto sugerido para dos personas: un integrante sigue la ruta de seguridad
@@ -122,16 +124,17 @@ primera semana y la ruta de servicios avanza en paralelo.
 | 4 | No encontrar una ciudad real bajo 0 °C o con lluvia el día de la corrección | Medio | Lista de ciudades candidatas preparada; mock de OpenWeather para la demo local | [#21](https://github.com/aggg15/Sistemas-Distribuidos/issues/21) |
 | 5 | Acceso concurrente a SQLite desde CENTRAL y Registry | Medio | WAL, conexión por operación, timeout; pruebas de concurrencia | [#1](https://github.com/aggg15/Sistemas-Distribuidos/issues/1), [#3](https://github.com/aggg15/Sistemas-Distribuidos/issues/3) |
 | 6 | Clave en claro en el socket Monitor ↔ Engine si no comparten equipo | Medio | Loopback o TLS en ese socket | [#8](https://github.com/aggg15/Sistemas-Distribuidos/issues/8) |
-| 7 | Front público con operaciones de control | Medio | Token de operación solo en el servidor del Front; lecturas públicas | [#16](https://github.com/aggg15/Sistemas-Distribuidos/issues/16), [#22](https://github.com/aggg15/Sistemas-Distribuidos/issues/22) |
+| 7 | Front público con operaciones de control | Medio | Front de solo consulta (405 en POST/PUT/DELETE); las órdenes, desde CENTRAL con token ([#16](https://github.com/aggg15/Sistemas-Distribuidos/issues/16)) | [#16](https://github.com/aggg15/Sistemas-Distribuidos/issues/16), [#22](https://github.com/aggg15/Sistemas-Distribuidos/issues/22) |
 | 8 | Fugas de secretos en un repositorio público | Crítico | `.gitignore` ampliado, `.env.example`, revisión con `git grep` antes de cada PR | [#2](https://github.com/aggg15/Sistemas-Distribuidos/issues/2), [#25](https://github.com/aggg15/Sistemas-Distribuidos/issues/25) |
 | 9 | Memoria de la instancia EC2 con más contenedores | Medio | `t3.small`/`t3.medium`; heap de Kafka acotado (ya en R1) | [#27](https://github.com/aggg15/Sistemas-Distribuidos/issues/27) |
 | 10 | Tiempo: 4 semanas para 30 tareas obligatorias | Crítico | Opcionales al final; ruta crítica primero; ensayo general antes del 10/12 | Plan |
+| 11 | Dos runtimes (Python y Node.js) y la regla de alta escrita en los dos | Medio | Node.js solo en la nube (Docker); CI con Node 22 y 24; las pruebas del Registry crean la BD con `common/base_datos.py` y verifican el hash en los dos lenguajes | [#3](https://github.com/aggg15/Sistemas-Distribuidos/issues/3), [#22](https://github.com/aggg15/Sistemas-Distribuidos/issues/22) |
 
 ## 8. Estrategia de pruebas
 
 Resumen (detalle en [TEST_PLAN.md](TEST_PLAN.md)):
 
-- **Unitarias** con `unittest` (como en R1), sin red externa: servidores en hilos y puerto 0, BD en ficheros temporales, OpenWeather simulado.
+- **Unitarias** con `unittest` (como en R1) y `node --test` para Registry y Front, sin red externa: servidores en hilos y puerto 0, BD en ficheros temporales, OpenWeather simulado.
 - **Seguridad**: certificados de otra CA, credenciales erróneas, mensajes manipulados o con otra clave, reutilización de claves revocadas, búsqueda de secretos.
 - **Integración**: Kafka local con `docker compose`, Registry, CENTRAL+API, Front, WM_W simulado, varias WS y FO.
 - **Regresión de R1**: toda la batería en CI y los escenarios de caída de `docs/DISENO.md` §10.

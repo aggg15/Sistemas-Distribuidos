@@ -23,5 +23,8 @@ certs/
 *.key
 *.cred
 
+# Dependencias de Node.js (WM_Registry, WM_Front): se instalan con npm ci.
+node_modules/
+
 # Metadatos del sistema.
 .DS_Store

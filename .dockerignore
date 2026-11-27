@@ -16,3 +16,4 @@ certs
 **/*.pem
 **/*.key
 **/*.cred
+**/node_modules

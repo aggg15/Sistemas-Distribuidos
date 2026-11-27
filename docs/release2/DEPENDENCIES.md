@@ -124,10 +124,10 @@ Ruta crítica: [#2](https://github.com/aggg15/Sistemas-Distribuidos/issues/2) �
 | `common/seguridad.py` (nuevo) | `cryptography`, `ssl`, `hashlib`, `secrets` | Credenciales, cifrado Fernet, contextos TLS |
 | `common/auditoria.py` (nuevo) | `common/base_datos.py` | Eventos estructurados |
 | `common/base_datos.py` | `sqlite3` | Esquema ampliado y migración |
-| WM_Registry (nuevo) | seguridad, base_datos, auditoría | Alta, baja y autenticación por HTTPS |
+| WM_Registry (Node.js) | `express`, `node:sqlite`, `node:https`, esquema de `common/base_datos.py`, certificados de `common/certificados.py` | Alta, consulta, baja y autenticación por HTTPS |
 | WM_Central | protocolo, seguridad, base_datos, auditoría, kafka_utils | TLS, autenticación, claves, cifrado, revocación, clima |
 | API_Central | WM_Central (mismo proceso), auditoría | REST de consulta, control y alertas |
-| Front (nuevo) | API_Central | Dashboard |
+| WM_Front (Node.js) | `express`, API_Central | Dashboard de solo consulta |
 | WM_WS_M | protocolo, seguridad, consola, WM_Registry (HTTPS), WM_Central (TLS) | Menú, alta, autenticación, entrega de la clave |
 | WM_WS_E | protocolo, seguridad, kafka_utils, WM_WS_M | Cifrado y descifrado de mensajes |
 | WM_FO | kafka_utils | Sin cambios funcionales (solo campo `ip`) |
@@ -138,29 +138,31 @@ Ruta crítica: [#2](https://github.com/aggg15/Sistemas-Distribuidos/issues/2) �
 | Dependencia | Estado | Justificación | Tarea |
 |---|---|---|---|
 | `kafka-python==3.0.11` | Existente | Cliente Kafka de R1 | — |
-| `cryptography` (versión fijada al implementarlo) | Nueva | La biblioteca estándar no incluye cifrado simétrico (Fernet/AES) | [#2](https://github.com/aggg15/Sistemas-Distribuidos/issues/2) |
-| `openssl` (CLI) | Herramienta de despliegue | Generar CA y certificados con SAN | [#2](https://github.com/aggg15/Sistemas-Distribuidos/issues/2), [#28](https://github.com/aggg15/Sistemas-Distribuidos/issues/28) |
+| `cryptography==50.0.2` | Nueva | La biblioteca estándar no incluye cifrado simétrico (Fernet/AES); también genera la CA y los certificados (`scripts/generar_certificados.py`), sin `openssl` | [#2](https://github.com/aggg15/Sistemas-Distribuidos/issues/2) |
 | apache/kafka 3.9.1 (Docker) | Existente | Broker | — |
 | OpenWeather Current weather data | Servicio externo nuevo | Exigido por el PDF (p. 5–8); API key gratuita | [#19](https://github.com/aggg15/Sistemas-Distribuidos/issues/19) |
 | AWS Labs (EC2) | Existente | Despliegue cloud (p. 9) | [#28](https://github.com/aggg15/Sistemas-Distribuidos/issues/28) |
 | Docker Hub + GitHub Actions | Existente | Publicación de la imagen | [#24](https://github.com/aggg15/Sistemas-Distribuidos/issues/24) |
-| Node.js | **No se añade** | Recomendado pero no obligatorio (p. 5); ver ARCHITECTURE.md D7 | [#22](https://github.com/aggg15/Sistemas-Distribuidos/issues/22) |
-| Flask / FastAPI | **No se añade** | `http.server` basta (ARCHITECTURE.md D4) | — |
+| Node.js ≥ 22.13 (imagen `node:24-slim`) | **Nueva** (27/11/2026) | Tutorial de la asignatura y recomendación del PDF (p. 5). Solo en la nube y en desarrollo; los PCs del laboratorio no lo necesitan (ARCHITECTURE.md D4, D7) | [#3](https://github.com/aggg15/Sistemas-Distribuidos/issues/3), [#22](https://github.com/aggg15/Sistemas-Distribuidos/issues/22) |
+| `express@5.3.0` | **Nueva** | Framework REST del tutorial; versión fija con `package-lock.json` | [#3](https://github.com/aggg15/Sistemas-Distribuidos/issues/3), [#22](https://github.com/aggg15/Sistemas-Distribuidos/issues/22) |
+| `mysql`, `body-parser`, `request` (tutorial) | **No se añaden** | SQLite compartida con CENTRAL (`node:sqlite`); `express.json()` incluye body-parser; `request` está retirado y Node.js trae `fetch` | — |
+| Flask / FastAPI | **No se añade** | API_Central sigue en Python con `http.server` (ARCHITECTURE.md D4) | — |
 
 ## 4. Dependencias de configuración
 
 | Variable | Componente | Ejemplo / valor por defecto | Secreto |
 |---|---|---|---|
 | `WM_TLS_CERT`, `WM_TLS_KEY` | CENTRAL, Registry | `certs/servidor.pem`, `certs/servidor.key` | La clave sí |
-| `WM_CA_CERT` | Monitor, WM_W, Front | `certs/ca.pem` | No |
+| `WM_CA_CERT` | Monitor, WM_W | `certs/ca.pem` | No |
 | `WM_REGISTRY_URL` | Monitor | `https://IP_AWS:8443` | No |
 | `WM_REGISTRY_PORT` | Registry | `8443` | No |
 | `WM_HTTP_PORT` | API_Central | `8080` (existente) | No |
-| `WM_API_TOKEN` | API_Central, Front | — | Sí |
+| `WM_API_TOKEN` | API_Central (el Front es de solo consulta y no lo usa) | — | Sí |
 | `WM_W_TOKEN` | API_Central, WM_W | — | Sí |
 | `OPENWEATHER_API_KEY` | WM_W | — | Sí |
 | `WM_API_CENTRAL_URL` | Front, WM_W | `http://IP_AWS:8080` | No |
-| `WM_FRONT_PORT` | Front | `8000` | No |
+| `WM_FRONT_PORT`, `WM_FRONT_HOST` | Front | `8000`, `0.0.0.0` | No |
+| `WM_REGISTRY_HOST` | Registry | `0.0.0.0` | No |
 | Existentes de R1 | todos | `WM_KAFKA_SERVER`, `WM_DB_PATH`, `WM_SOCKET_PORT`... | No |
 
 Los nombres definitivos se fijan en cada Issue y se recogen en un

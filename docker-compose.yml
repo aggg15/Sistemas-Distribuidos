@@ -75,5 +75,46 @@ services:
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
 
+  # --- Release 2: servicios REST en Node.js + Express ----------------------
+  # Van en el perfil release2 para que el despliegue de Release 1 no cambie
+  # hasta cerrar #27/#28. Al nombrarlos se arrancan igualmente:
+  #   python scripts/generar_certificados.py IP_PUBLICA     (crea certs/)
+  #   docker compose up -d --build central kafka registry front
+
+  # WM_Registry: alta y baja de estaciones por HTTPS (WM_Registry/README.md).
+  registry:
+    profiles: [release2]
+    build: ./WM_Registry
+    image: ${WM_REGISTRY_IMAGE:-wm-registry:local}
+    ports:
+      - "${WM_REGISTRY_PUBLISHED_PORT:-8443}:8443"
+    depends_on: [central]
+    environment:
+      WM_REGISTRY_PORT: 8443
+      WM_DB_PATH: /app/data/wm.db
+      WM_TLS_CERT: /app/certs/servidor.pem
+      WM_TLS_KEY: /app/certs/servidor.key
+    volumes:
+      # Misma BD que CENTRAL: el Registry escribe las altas y CENTRAL las lee.
+      - wm-datos:/app/data
+      - ./certs:/app/certs:ro
+    stop_grace_period: 10s
+    restart: unless-stopped
+
+  # Front: dashboard público que consume API_Central (WM_Front/README.md).
+  front:
+    profiles: [release2]
+    build: ./WM_Front
+    image: ${WM_FRONT_IMAGE:-wm-front:local}
+    ports:
+      - "${WM_FRONT_PUBLISHED_PORT:-8000}:8000"
+    depends_on: [central]
+    environment:
+      WM_FRONT_PORT: 8000
+      # Dentro de la red de Docker, API_Central es el puerto 8080 del servicio central.
+      WM_API_CENTRAL_URL: ${WM_API_CENTRAL_URL:-http://central:8080}
+    stop_grace_period: 10s
+    restart: unless-stopped
+
 volumes:
   wm-datos:
