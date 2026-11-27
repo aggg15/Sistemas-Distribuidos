@@ -7,6 +7,7 @@ import sqlite3
 import subprocess
 import sys
 import tempfile
+import threading
 import unittest
 
 from common.base_datos import COLUMNAS_R2, BaseDatos, EstacionYaRegistrada
@@ -91,6 +92,20 @@ class PruebasMigracion(Temporal):
         self.crear_bd_r1()
         with ThreadPoolExecutor(max_workers=4) as pool:
             list(pool.map(lambda _: BaseDatos(self.ruta), range(8)))
+        self.assertEqual(len(self.columnas()), 4 + len(COLUMNAS_R2))
+
+    def test_arranque_espera_si_otro_proceso_bloquea_la_bd(self):
+        # Otro proceso (CENTRAL o Registry) tiene la BD bloqueada más tiempo que
+        # el timeout de una conexión (1 s): el arranque reintenta en lugar de fallar.
+        self.crear_bd_r1()
+        bloqueo = sqlite3.connect(self.ruta, isolation_level=None, check_same_thread=False)
+        bloqueo.execute("BEGIN EXCLUSIVE")
+        liberar = threading.Timer(1.5, lambda: (bloqueo.execute("COMMIT"), bloqueo.close()))
+        liberar.start()
+        try:
+            BaseDatos(self.ruta)
+        finally:
+            liberar.join()
         self.assertEqual(len(self.columnas()), 4 + len(COLUMNAS_R2))
 
     def test_tabla_de_auditoria_creada(self):
