@@ -1,18 +1,47 @@
-
 name: Build and Push to Docker Hub
 
+# Las pruebas se ejecutan en cada push a main y en cada pull request. La imagen
+# solo se construye y se sube a Docker Hub en un push a main con las pruebas en
+# verde: un cambio que rompa Release 1 no llega a AWS.
 on:
   push:
     branches:
       - main # Asegúrate de que coincide con tu rama principal
+  pull_request:
 
 jobs:
+  tests:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 3.9: versión mínima del README. 3.12: la de la imagen Docker.
+        python-version: ["3.9", "3.12"]
+
+    steps:
+      - name: Checkout del código
+        uses: actions/checkout@v4
+
+      - name: Instalar Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Instalar dependencias
+        run: pip install -r requirements.txt
+
+      - name: Ejecutar pruebas
+        run: python -m unittest -v
+
   build:
+    needs: tests
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout del código
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Iniciar sesión en Docker Hub
         uses: docker/login-action@v2

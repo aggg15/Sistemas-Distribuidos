@@ -68,6 +68,9 @@ Para más estaciones en el mismo equipo, cada pareja Monitor/Engine usa otro
 python -m unittest -v
 ```
 
+GitHub Actions las ejecuta con Python 3.9 y 3.12 en cada push a `main` y en
+cada pull request; la imagen de Docker Hub solo se publica si pasan.
+
 ## Documentación
 
 - [Diseño](docs/DISENO.md): estados, mensajes, ciclo de riego y resiliencia.
