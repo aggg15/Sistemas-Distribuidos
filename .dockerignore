@@ -12,3 +12,7 @@ data
 **/*.db-*
 **/*.sqlite
 **/*.sqlite-*
+certs
+**/*.pem
+**/*.key
+**/*.cred
