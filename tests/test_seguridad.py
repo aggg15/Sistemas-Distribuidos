@@ -189,6 +189,16 @@ class PruebasTLS(unittest.TestCase):
         for clave in (self.rutas["key"], self.rutas["ca_key"]):
             self.assertEqual(clave.stat().st_mode & 0o777, 0o600)
 
+    @unittest.skipIf(sys.platform == "win32", "Windows no usa permisos POSIX")
+    def test_regenerar_corrige_permisos_de_una_clave_existente(self):
+        carpeta = self.carpeta / "permisos"
+        carpeta.mkdir()
+        clave = carpeta / "servidor.key"
+        clave.write_text("antigua")
+        clave.chmod(0o644)
+        generar_en(carpeta, ["127.0.0.1"])
+        self.assertEqual(clave.stat().st_mode & 0o777, 0o600)
+
     def test_script_de_generacion(self):
         carpeta = self.carpeta / "script"
         salida = subprocess.run([sys.executable, str(RAIZ / "scripts" / "generar_certificados.py"),

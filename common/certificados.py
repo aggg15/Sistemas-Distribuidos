@@ -97,8 +97,12 @@ def _escribir_clave(ruta, clave):
     datos = clave.private_bytes(serialization.Encoding.PEM,
                                 serialization.PrivateFormat.PKCS8,
                                 serialization.NoEncryption())
-    # Se crea ya con permisos 0600 (en Windows el modo se ignora).
+    # Se crea ya con permisos 0600 (en Windows el modo se ignora). os.open solo
+    # aplica el modo al crear el fichero: si ya existía con otros permisos, se
+    # corrigen antes de escribir la clave.
     descriptor = os.open(ruta, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    if hasattr(os, "fchmod"):
+        os.fchmod(descriptor, 0o600)
     with os.fdopen(descriptor, "wb") as fichero:
         fichero.write(datos)
 
