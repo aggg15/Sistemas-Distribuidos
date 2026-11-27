@@ -1,8 +1,9 @@
 name: Build and Push to Docker Hub
 
-# Las pruebas se ejecutan en cada push a main y en cada pull request. La imagen
-# solo se construye y se sube a Docker Hub en un push a main con las pruebas en
-# verde: un cambio que rompa Release 1 no llega a AWS.
+# Las pruebas (Python y Node.js) se ejecutan en cada push a main y en cada pull
+# request. La imagen solo se construye y se sube a Docker Hub en un push a main
+# con las pruebas en verde: un cambio que rompa Release 1 no llega a AWS. Las
+# imágenes de WM_Registry y WM_Front se publicarán con el despliegue (#27, #28).
 on:
   push:
     branches:
@@ -32,11 +33,63 @@ jobs:
       - name: Instalar dependencias
         run: pip install -r requirements.txt
 
+      # Node.js para tests/test_registry.py: prueba WM_Registry por HTTPS real
+      # desde Python, como lo usará el Monitor (sin npm ci se omitiría).
+      - name: Instalar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: WM_Registry/package-lock.json
+
+      - name: Instalar dependencias de WM_Registry
+        run: npm ci
+        working-directory: WM_Registry
+
       - name: Ejecutar pruebas
         run: python -m unittest -v
 
+  # WM_Registry y WM_Front (Node.js + Express). Sus pruebas crean la BD con
+  # common/base_datos.py, así que también necesitan Python (solo biblioteca estándar).
+  tests-node:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        # 22: mínimo para node:sqlite sin opciones. 24: el de las imágenes Docker.
+        node-version: [22, 24]
+        modulo: [WM_Registry, WM_Front]
+
+    steps:
+      - name: Checkout del código
+        uses: actions/checkout@v4
+
+      - name: Instalar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Instalar Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+          cache-dependency-path: ${{ matrix.modulo }}/package-lock.json
+
+      - name: Instalar dependencias
+        run: npm ci
+        working-directory: ${{ matrix.modulo }}
+
+      - name: Ejecutar pruebas
+        run: npm test
+        working-directory: ${{ matrix.modulo }}
+
+      - name: Comprobar que la imagen Docker se construye
+        if: matrix.node-version == 24
+        run: docker build -t wm-prueba ${{ matrix.modulo }}
+
   build:
-    needs: tests
+    needs: [tests, tests-node]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
 
