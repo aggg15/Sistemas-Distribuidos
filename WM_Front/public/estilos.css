@@ -1,0 +1,117 @@
+/* Mismos colores que el panel de CENTRAL de Release 1 (WM_Central/panel/index.html). */
+:root {
+  --fondo: #e9ecf0;
+  --superficie: #ffffff;
+  --texto: #1f2328;
+  --tenue: #59636e;
+  --borde: #c9ced4;
+  --borde-suave: #e3e6ea;
+  --cabecera-tabla: #f1f3f5;
+  --azul: #1e3f73;
+  --azul-claro: #2b5797;
+  --verde: #c6efce;
+  --verde-texto: #0f5323;
+  --rojo: #f4a6a6;
+  --rojo-texto: #8a1414;
+  --naranja: #f8c58c;
+  --naranja-texto: #7a3d00;
+  --azul-suave: #cfe2ff;
+  --azul-texto: #0b3d91;
+  --gris: #d0d4d9;
+  --gris-texto: #3d444d;
+  --consola: #1b1f24;
+  --consola-texto: #c9d1d9;
+  --mono: Consolas, "Cascadia Mono", ui-monospace, monospace;
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  background: var(--fondo);
+  font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+  font-size: 14px;
+  line-height: 1.4;
+  color: var(--texto);
+}
+
+.app { min-height: 100%; display: grid; grid-template-rows: auto auto 1fr auto; }
+
+.cabecera {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 24px;
+  padding: 10px 20px;
+  background: linear-gradient(var(--azul-claro), var(--azul));
+  color: #fff;
+}
+.marca { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 240px; }
+.marca .icono { width: 18px; height: 18px; border-radius: 4px; background: #7fd3a0; flex: none; }
+.marca h1 { margin: 0; font-size: 17px; font-weight: 600; }
+.marca small { margin-left: 6px; font-size: 13px; font-weight: 400; color: #c8d6ec; }
+
+.indicadores { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; font-size: 13px; }
+.indicador { display: inline-flex; align-items: center; gap: 6px; }
+.indicador i { width: 10px; height: 10px; border-radius: 50%; background: #8c959f; }
+.indicador.ok i { background: #7fd3a0; }
+.indicador.ko i { background: #ff8a8a; }
+.reloj { color: #c8d6ec; font-variant-numeric: tabular-nums; }
+
+.aviso {
+  margin: 12px 20px 0; padding: 10px 14px; border-radius: 6px;
+  background: var(--rojo); color: var(--rojo-texto); font-weight: 600;
+}
+
+.contenido {
+  display: grid; gap: 16px; padding: 16px 20px;
+  grid-template-columns: minmax(0, 1fr);
+  align-content: start;
+}
+@media (min-width: 1100px) {
+  .contenido { grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); }
+  .contenido > .tarjeta:first-child { grid-column: 1 / -1; }
+}
+
+.tarjeta {
+  background: var(--superficie); border: 1px solid var(--borde); border-radius: 8px;
+  overflow: hidden; min-width: 0;
+}
+.tarjeta-cabecera {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
+  padding: 10px 14px; border-bottom: 1px solid var(--borde-suave);
+}
+.tarjeta-cabecera h2 { margin: 0; font-size: 15px; font-weight: 600; }
+.resumen { color: var(--tenue); font-size: 13px; }
+
+.tabla-desplazable { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; }
+th, td { padding: 7px 12px; text-align: left; border-bottom: 1px solid var(--borde-suave); white-space: nowrap; }
+th { background: var(--cabecera-tabla); color: var(--tenue); font-size: 12px; font-weight: 600; }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+td.vacio { color: var(--tenue); font-style: italic; }
+tbody tr:last-child td { border-bottom: none; }
+
+.estado {
+  display: inline-block; min-width: 118px; padding: 2px 8px; border-radius: 4px;
+  font-size: 12px; font-weight: 600; text-align: center;
+}
+.estado.DISPONIBLE { background: var(--verde); color: var(--verde-texto); }
+.estado.REGANDO { background: var(--azul-suave); color: var(--azul-texto); }
+.estado.FUGA { background: var(--rojo); color: var(--rojo-texto); }
+.estado.FUERA_SERVICIO { background: var(--naranja); color: var(--naranja-texto); }
+.estado.DESCONECTADA { background: var(--gris); color: var(--gris-texto); }
+
+.etiqueta { font-size: 12px; color: var(--tenue); }
+.etiqueta.si { color: var(--verde-texto); font-weight: 600; }
+.etiqueta.no { color: var(--rojo-texto); font-weight: 600; }
+
+.consola {
+  margin: 0; padding: 10px 14px; list-style: none;
+  max-height: 340px; overflow-y: auto;
+  background: var(--consola); color: var(--consola-texto);
+  font-family: var(--mono); font-size: 12.5px;
+}
+.consola li { padding: 1px 0; white-space: pre-wrap; word-break: break-word; }
+.consola li.WARNING { color: #f2cc60; }
+.consola li.ERROR, .consola li.CRITICAL { color: #ff8a8a; }
+.consola li.vacio { color: #8c959f; font-style: italic; }
+
+.pie { padding: 10px 20px 16px; color: var(--tenue); font-size: 12.5px; }

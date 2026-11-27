@@ -1,0 +1,23 @@
+{
+  "name": "wm_front",
+  "version": "2.0.0",
+  "description": "Front web de Water Management: dashboard de CENTRAL que consume API_Central (SD 26/27, Release 2)",
+  "main": "WM_Front.js",
+  "private": true,
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "start": "node WM_Front.js",
+    "test": "node --test --test-concurrency=1 \"test/*.test.js\""
+  },
+  "keywords": [
+    "API",
+    "REST",
+    "SD"
+  ],
+  "license": "ISC",
+  "dependencies": {
+    "express": "5.3.0"
+  }
+}

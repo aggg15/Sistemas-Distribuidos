@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Water Management · Front</title>
+<link rel="stylesheet" href="estilos.css">
+<script src="front.js" defer></script>
+</head>
+<body>
+<div class="app">
+  <header class="cabecera">
+    <div class="marca">
+      <span class="icono" aria-hidden="true"></span>
+      <h1>Water Management <small>Cuadro de monitorización de CENTRAL</small></h1>
+    </div>
+    <div class="indicadores">
+      <span class="indicador" id="ind-api"><i></i>API_Central</span>
+      <span class="indicador" id="ind-kafka"><i></i>Kafka</span>
+      <span class="reloj" id="actualizado">Sin datos</span>
+    </div>
+  </header>
+
+  <div class="aviso" id="aviso" hidden></div>
+
+  <main class="contenido">
+    <section class="tarjeta">
+      <div class="tarjeta-cabecera">
+        <h2>Estaciones de riego</h2>
+        <span class="resumen" id="resumen"></span>
+      </div>
+      <div class="tabla-desplazable">
+        <table>
+          <thead><tr id="cabecera-estaciones"></tr></thead>
+          <tbody id="estaciones">
+            <tr><td class="vacio">Cargando…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="tarjeta">
+      <div class="tarjeta-cabecera">
+        <h2>Riegos en curso</h2>
+      </div>
+      <div class="tabla-desplazable">
+        <table>
+          <thead>
+            <tr><th>Estación</th><th>Riego</th><th>Origen</th><th>Operario</th>
+                <th class="num">Caudal (l/min)</th><th class="num">Volumen (l)</th>
+                <th class="num">Tiempo (s)</th></tr>
+          </thead>
+          <tbody id="riegos"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="tarjeta">
+      <div class="tarjeta-cabecera">
+        <h2>Mensajes y errores de CENTRAL</h2>
+      </div>
+      <ol class="consola" id="eventos"></ol>
+    </section>
+  </main>
+
+  <footer class="pie">
+    Front de solo consulta: las órdenes (bloquear, activar, restaurar claves) se dan desde WM_Central.
+  </footer>
+</div>
+</body>
+</html>
