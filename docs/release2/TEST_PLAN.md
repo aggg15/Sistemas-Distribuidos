@@ -10,7 +10,7 @@
 
 | Nivel | Herramienta | Entorno | Cuándo |
 |---|---|---|---|
-| Unitarias | `unittest` (como en R1) | Sin red externa: servidores en hilo y puerto 0, BD temporal, OpenWeather simulado | Cada PR (CI) |
+| Unitarias | `unittest` (como en R1) y `node --test` (Registry y Front) | Sin red externa: servidores en hilo y puerto 0, BD temporal, OpenWeather simulado | Cada PR (CI) |
 | Seguridad | `unittest` + pruebas manuales (`tcpdump`/Wireshark, `kafka-console-consumer`, `curl`) | Local | Al cerrar [#9](https://github.com/aggg15/Sistemas-Distribuidos/issues/9), [#10](https://github.com/aggg15/Sistemas-Distribuidos/issues/10) y antes del despliegue |
 | Integración | `docker compose` + scripts | Local, todos los módulos | Fase 5 y antes de cada despliegue |
 | Regresión R1 | Batería completa + escenarios de caída | Local y AWS | Cada fase |
@@ -24,9 +24,9 @@ que necesitan Kafka real se omiten (como en R1) si no está disponible.
 
 | Tarea | Fichero previsto | Casos mínimos |
 |---|---|---|
-| [#1](https://github.com/aggg15/Sistemas-Distribuidos/issues/1) | `tests/test_base_datos.py` | Migración desde esquema R1; alta, baja, re-alta; claves; alerta |
+| [#1](https://github.com/aggg15/Sistemas-Distribuidos/issues/1) | `tests/test_base_datos_r2.py` | Migración desde esquema R1; alta, baja, re-alta; claves; alerta |
 | [#2](https://github.com/aggg15/Sistemas-Distribuidos/issues/2) | `tests/test_seguridad.py` | Hash/verificación; Fernet ida y vuelta; manipulación; clave errónea; TTL; handshake TLS |
-| [#3](https://github.com/aggg15/Sistemas-Distribuidos/issues/3) | `tests/test_registry.py` | PUT/GET/DELETE/POST; 400/401/404/409/413; sin TLS |
+| [#3](https://github.com/aggg15/Sistemas-Distribuidos/issues/3) | `WM_Registry/test/*.test.js` (`npm test`) y `tests/test_registry.py` | PUT/GET/DELETE/POST; 400/401/404/409/413; altas simultáneas; auditoría; hash verificable desde Python y viceversa; HTTPS real con la CA del proyecto, otra CA y HTTP plano rechazados; espera a que CENTRAL cree la BD. Manual: colección de Postman |
 | [#4](https://github.com/aggg15/Sistemas-Distribuidos/issues/4), [#8](https://github.com/aggg15/Sistemas-Distribuidos/issues/8) | `tests/test_monitor.py` | Cliente Registry; fichero de credencial; AUTENTICAR; CLAVE/REVOCADA al Engine |
 | [#6](https://github.com/aggg15/Sistemas-Distribuidos/issues/6), [#7](https://github.com/aggg15/Sistemas-Distribuidos/issues/7) | `tests/test_comunicaciones.py` | Canal sobre TLS; motivos de KO; claves distintas por WS |
 | [#9](https://github.com/aggg15/Sistemas-Distribuidos/issues/9) | `tests/test_riegos.py`, `tests/test_engine.py` | Sobres cifrados en ambos sentidos; descarte de mensajes inválidos |
@@ -35,7 +35,7 @@ que necesitan Kafka real se omiten (como en R1) si no está disponible.
 | [#15](https://github.com/aggg15/Sistemas-Distribuidos/issues/15) | `tests/test_riegos.py`, `tests/test_engine.py` | Alerta con y sin riego; cancelación; combinación con bloqueo |
 | [#12](https://github.com/aggg15/Sistemas-Distribuidos/issues/12), [#16](https://github.com/aggg15/Sistemas-Distribuidos/issues/16), [#17](https://github.com/aggg15/Sistemas-Distribuidos/issues/17) | `tests/test_api_central.py` | Cada endpoint; tokens; CORS; compatibilidad con `/api/estado` |
 | [#19](https://github.com/aggg15/Sistemas-Distribuidos/issues/19), [#20](https://github.com/aggg15/Sistemas-Distribuidos/issues/20), [#21](https://github.com/aggg15/Sistemas-Distribuidos/issues/21) | `tests/test_wm_w.py` | JSON de la p. 8; unidades; errores 401/404/429; recarga de fichero; detección de cambios |
-| [#22](https://github.com/aggg15/Sistemas-Distribuidos/issues/22) | `tests/test_front.py` | Proxy y errores de API_Central caída |
+| [#22](https://github.com/aggg15/Sistemas-Distribuidos/issues/22) | `WM_Front/test/front.test.js` (`npm test`) | Proxy de GET; 405 en POST/PUT/DELETE; 502 con API_Central caída; cabeceras de seguridad; sin `innerHTML` |
 
 ## 4. Casos de seguridad (SEC) — [#25](https://github.com/aggg15/Sistemas-Distribuidos/issues/25)
 
@@ -89,3 +89,4 @@ que necesitan Kafka real se omiten (como en R1) si no está disponible.
 | Fecha | Commit / versión | Entorno | Casos | Resultado | Responsable | Evidencia |
 |---|---|---|---|---|---|---|
 | 17/11/2026 | `07a4dbd` | Local (macOS, Python 3.14, kafka-python 3.0.11) | REG-01 | 134 OK | Planificación (IA, revisión pendiente) | Salida de `python -m unittest` |
+| 27/11/2026 | rama `feat/r2-registry-front-node` | Local (macOS, Python 3.9.6 y 3.14, Node.js 26) y Docker Compose | REG-01, #3, #22, SEC-01 | Python y Node en verde; Registry + Front + CENTRAL en Docker | IA, revisión pendiente | Salida de `python -m unittest` y `npm test`; PR en GitHub |

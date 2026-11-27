@@ -17,7 +17,9 @@ laboratorio.
 | `WM_WS/WM_WS_E.py` | Engine de la estación: electroválvula, caudalímetro, menú y averías simuladas. |
 | `WM_FO/WM_FO.py` | Aplicación del operario: solicitudes manuales o desde fichero. |
 | `WM_FO/peticiones_ejemplo.txt` | Fichero de peticiones de ejemplo (`ws_id;segundos`). |
-| `common/` | Código compartido: protocolo de sockets, Kafka, SQLite, validaciones. |
+| `WM_Registry/` | Release 2. WM_Registry (Node.js + Express): alta y baja de estaciones por HTTPS. |
+| `WM_Front/` | Release 2. Front web (Node.js + Express): dashboard de solo consulta sobre API_Central. |
+| `common/` | Código compartido: protocolo de sockets, Kafka, SQLite, seguridad, validaciones. |
 | `scripts/gestionar_bd.py` | Alta de estaciones y operarios y consulta de la base de datos. |
 | `tests/` | Pruebas automáticas (`python -m unittest`). |
 | `deploy/`, `Dockerfile`, `docker-compose.yml` | Contenedores y despliegue en AWS. |
@@ -88,12 +90,21 @@ API_Central, Front web y WM_W (clima de OpenWeather cada 4 s). Entrega: semana
 del 13/12/2026. Lo descrito arriba corresponde a Release 1 y sigue vigente
 mientras no se cierren los Issues de Release 2.
 
+Ya disponibles (Node.js 22.13 o posterior, según el tutorial de API REST de la
+asignatura; ver [adaptación del tutorial](docs/release2/TUTORIAL_API_REST.md)):
+
+- [WM_Registry](WM_Registry/README.md): `python scripts/generar_certificados.py localhost` y después `cd WM_Registry && npm ci && npm start` (HTTPS en el 8443).
+- [WM_Front](WM_Front/README.md): `cd WM_Front && npm ci && npm start` (HTTP en el 8000).
+- Con Docker: `docker compose up -d --build central kafka registry front`.
+- Pruebas: `npm test` en cada carpeta. `python -m unittest` incluye la prueba del Registry por HTTPS si se ha hecho `npm ci` en `WM_Registry/`.
+
 Planificación:
 
 - [Matriz de requisitos y trazabilidad](docs/release2/REQUIREMENTS.md)
 - [Plan de implementación](docs/release2/IMPLEMENTATION_PLAN.md): orden, ruta crítica, riesgos y checklist de evaluación.
 - [Arquitectura y decisiones técnicas](docs/release2/ARCHITECTURE.md): contratos de Registry, sockets, Kafka cifrado y API_Central.
 - [Dependencias](docs/release2/DEPENDENCIES.md) y [plan de pruebas](docs/release2/TEST_PLAN.md).
+- [Adaptación del tutorial de API REST con Node.js](docs/release2/TUTORIAL_API_REST.md).
 - [Uso de IA y prompts](docs/release2/AI_USAGE.md).
 
 Seguimiento en GitHub:
